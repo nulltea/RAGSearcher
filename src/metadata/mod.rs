@@ -1,7 +1,7 @@
 pub mod models;
 
 use anyhow::{Context, Result};
-use models::{Paper, PaperCreate, PaperListParams, PaperStatus};
+use models::{Paper, PaperCreate, PaperListParams, PaperStatus, Pattern, PatternStatus};
 use rusqlite::Connection;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -34,9 +34,22 @@ impl MetadataStore {
                 chunk_count INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS patterns (
+                id TEXT PRIMARY KEY,
+                paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                claim TEXT,
+                evidence TEXT,
+                context TEXT,
+                tags TEXT NOT NULL DEFAULT '[]',
+                confidence TEXT NOT NULL DEFAULT 'medium',
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );",
         )
-        .context("Failed to create papers table")?;
+        .context("Failed to create tables")?;
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -225,6 +238,178 @@ impl MetadataStore {
             let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let rows = conn.execute("DELETE FROM papers WHERE id = ?1", rusqlite::params![id])?;
             Ok(rows > 0)
+        })
+        .await?
+    }
+
+    // --- Pattern CRUD ---
+
+    pub async fn create_pattern(
+        &self,
+        paper_id: &str,
+        name: &str,
+        claim: Option<&str>,
+        evidence: Option<&str>,
+        context: Option<&str>,
+        tags: &[String],
+        confidence: &str,
+    ) -> Result<Pattern> {
+        let conn = self.conn.clone();
+        let id = uuid::Uuid::new_v4().to_string();
+        let paper_id = paper_id.to_string();
+        let name = name.to_string();
+        let claim = claim.map(|s| s.to_string());
+        let evidence = evidence.map(|s| s.to_string());
+        let context = context.map(|s| s.to_string());
+        let tags_json = serde_json::to_string(tags)?;
+        let confidence = confidence.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let now = chrono::Utc::now().to_rfc3339();
+
+            conn.execute(
+                "INSERT INTO patterns (id, paper_id, name, claim, evidence, context, tags, confidence, status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                rusqlite::params![
+                    id, paper_id, name, claim, evidence, context, tags_json, confidence,
+                    PatternStatus::Pending.to_string(), now, now,
+                ],
+            )?;
+
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            Ok(Pattern {
+                id,
+                paper_id,
+                name,
+                claim,
+                evidence,
+                context,
+                tags,
+                confidence,
+                status: PatternStatus::Pending,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        })
+        .await?
+    }
+
+    pub async fn list_patterns(
+        &self,
+        paper_id: &str,
+        status_filter: Option<&str>,
+    ) -> Result<Vec<Pattern>> {
+        let conn = self.conn.clone();
+        let paper_id = paper_id.to_string();
+        let status_filter = status_filter.map(|s| s.to_string());
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+
+            let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+                if let Some(ref status) = status_filter {
+                    (
+                        "SELECT id, paper_id, name, claim, evidence, context, tags, confidence, status, created_at, updated_at FROM patterns WHERE paper_id = ?1 AND status = ?2 ORDER BY created_at".to_string(),
+                        vec![Box::new(paper_id), Box::new(status.clone())],
+                    )
+                } else {
+                    (
+                        "SELECT id, paper_id, name, claim, evidence, context, tags, confidence, status, created_at, updated_at FROM patterns WHERE paper_id = ?1 ORDER BY created_at".to_string(),
+                        vec![Box::new(paper_id)],
+                    )
+                };
+
+            let mut stmt = conn.prepare(&sql)?;
+            let refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+            let patterns = stmt
+                .query_map(refs.as_slice(), |row| {
+                    let tags_json: String = row.get(6)?;
+                    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+                    let status_str: String = row.get(8)?;
+                    Ok(Pattern {
+                        id: row.get(0)?,
+                        paper_id: row.get(1)?,
+                        name: row.get(2)?,
+                        claim: row.get(3)?,
+                        evidence: row.get(4)?,
+                        context: row.get(5)?,
+                        tags,
+                        confidence: row.get(7)?,
+                        status: PatternStatus::from_str(&status_str),
+                        created_at: row.get(9)?,
+                        updated_at: row.get(10)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok(patterns)
+        })
+        .await?
+    }
+
+    pub async fn update_pattern_status(&self, id: &str, status: PatternStatus) -> Result<()> {
+        let conn = self.conn.clone();
+        let id = id.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let now = chrono::Utc::now().to_rfc3339();
+            conn.execute(
+                "UPDATE patterns SET status = ?1, updated_at = ?2 WHERE id = ?3",
+                rusqlite::params![status.to_string(), now, id],
+            )?;
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn delete_patterns_by_paper(&self, paper_id: &str) -> Result<()> {
+        let conn = self.conn.clone();
+        let paper_id = paper_id.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            conn.execute(
+                "DELETE FROM patterns WHERE paper_id = ?1",
+                rusqlite::params![paper_id],
+            )?;
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn count_patterns_by_status(
+        &self,
+        paper_id: &str,
+    ) -> Result<(usize, usize, usize)> {
+        let conn = self.conn.clone();
+        let paper_id = paper_id.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let mut stmt = conn.prepare(
+                "SELECT status, COUNT(*) FROM patterns WHERE paper_id = ?1 GROUP BY status",
+            )?;
+            let mut pending = 0usize;
+            let mut approved = 0usize;
+            let mut rejected = 0usize;
+
+            let rows = stmt.query_map(rusqlite::params![paper_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (status, count) = row?;
+                match status.as_str() {
+                    "pending" => pending = count,
+                    "approved" => approved = count,
+                    "rejected" => rejected = count,
+                    _ => {}
+                }
+            }
+
+            Ok((pending, approved, rejected))
         })
         .await?
     }

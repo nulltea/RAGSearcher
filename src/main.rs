@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use project_rag::extraction::PatternExtractor;
 use project_rag::mcp_server::RagMcpServer;
 use project_rag::metadata::MetadataStore;
 use project_rag::RagClient;
@@ -68,8 +69,10 @@ async fn main() -> Result<()> {
                 MetadataStore::new(&db_path).expect("Failed to initialize metadata store"),
             );
 
+            let extractor = Arc::new(PatternExtractor::new());
+
             if let Err(e) =
-                project_rag::web::start_server(&host, port, client, metadata, upload_dir).await
+                project_rag::web::start_server(&host, port, client, metadata, upload_dir, Some(extractor)).await
             {
                 tracing::error!("Fatal error in web server: {:#}", e);
                 eprintln!("Fatal error: {:#}", e);

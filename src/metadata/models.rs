@@ -5,6 +5,7 @@ use std::fmt;
 #[serde(rename_all = "snake_case")]
 pub enum PaperStatus {
     Processing,
+    ReadyForReview,
     Active,
     Archived,
 }
@@ -13,6 +14,7 @@ impl fmt::Display for PaperStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PaperStatus::Processing => write!(f, "processing"),
+            PaperStatus::ReadyForReview => write!(f, "ready_for_review"),
             PaperStatus::Active => write!(f, "active"),
             PaperStatus::Archived => write!(f, "archived"),
         }
@@ -22,11 +24,55 @@ impl fmt::Display for PaperStatus {
 impl PaperStatus {
     pub fn from_str(s: &str) -> Self {
         match s {
+            "ready_for_review" => PaperStatus::ReadyForReview,
             "active" => PaperStatus::Active,
             "archived" => PaperStatus::Archived,
             _ => PaperStatus::Processing,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PatternStatus {
+    Pending,
+    Approved,
+    Rejected,
+}
+
+impl fmt::Display for PatternStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PatternStatus::Pending => write!(f, "pending"),
+            PatternStatus::Approved => write!(f, "approved"),
+            PatternStatus::Rejected => write!(f, "rejected"),
+        }
+    }
+}
+
+impl PatternStatus {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "approved" => PatternStatus::Approved,
+            "rejected" => PatternStatus::Rejected,
+            _ => PatternStatus::Pending,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pattern {
+    pub id: String,
+    pub paper_id: String,
+    pub name: String,
+    pub claim: Option<String>,
+    pub evidence: Option<String>,
+    pub context: Option<String>,
+    pub tags: Vec<String>,
+    pub confidence: String,
+    pub status: PatternStatus,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

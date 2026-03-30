@@ -9,6 +9,7 @@ import { Search, X } from "lucide-react";
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "", label: "All Statuses" },
   { value: "processing", label: "Processing" },
+  { value: "ready_for_review", label: "Ready for Review" },
   { value: "active", label: "Active" },
   { value: "archived", label: "Archived" },
 ];

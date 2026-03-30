@@ -1,7 +1,8 @@
 "use client";
 
-import { uploadPaper } from "@/lib/api";
+import { extractPatterns, uploadPaper } from "@/lib/api";
 import type { PaperUploadResponse } from "@/types";
+import { useRouter } from "next/navigation";
 import { AlertCircle, FileText, Loader2, Type } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
@@ -25,6 +26,8 @@ const INITIAL_METADATA: MetadataFormData = {
 };
 
 export default function UploadPage() {
+  const router = useRouter();
+
   // Input state
   const [inputMode, setInputMode] = useState<InputMode>("file");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -35,6 +38,10 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PaperUploadResponse | null>(null);
+
+  // Extraction state
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
 
   const hasContent =
     inputMode === "file" ? selectedFile !== null : textContent.trim().length > 0;
@@ -89,7 +96,24 @@ export default function UploadPage() {
     setMetadata(INITIAL_METADATA);
     setResult(null);
     setError(null);
+    setExtractError(null);
   }, []);
+
+  const handleExtractPatterns = useCallback(async () => {
+    if (!result) return;
+    setIsExtracting(true);
+    setExtractError(null);
+    try {
+      await extractPatterns(result.paper.id);
+      router.push(`/review/${result.paper.id}`);
+    } catch (err) {
+      setExtractError(
+        err instanceof Error ? err.message : "Pattern extraction failed",
+      );
+    } finally {
+      setIsExtracting(false);
+    }
+  }, [result, router]);
 
   // Show result after successful upload
   if (result) {
@@ -132,10 +156,41 @@ export default function UploadPage() {
               </p>
             </div>
 
+            {/* Extract Patterns */}
+            <div className="rounded-lg border border-input bg-card p-4">
+              <h3 className="font-medium">Extract Patterns</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Use AI to extract structured research patterns
+                (Claim/Evidence/Context) for review.
+              </p>
+              {extractError && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {extractError}
+                </div>
+              )}
+              <Button
+                className="mt-3 w-full"
+                onClick={handleExtractPatterns}
+                disabled={isExtracting}
+              >
+                {isExtracting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Extracting patterns (this may take a minute)...
+                  </>
+                ) : (
+                  "Extract Patterns"
+                )}
+              </Button>
+            </div>
+
             {/* Actions */}
             <div className="flex gap-3">
               <Link href="/library" className="flex-1">
-                <Button className="w-full">Go to Library</Button>
+                <Button variant="outline" className="w-full">
+                  Go to Library
+                </Button>
               </Link>
               <Link href={`/search?paper_id=${paper.id}`} className="flex-1">
                 <Button variant="outline" className="w-full">

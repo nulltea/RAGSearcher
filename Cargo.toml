@@ -118,7 +118,3 @@ path = "src/main.rs"
 name = "indexing_benchmark"
 harness = false
 
-[profile.release]
-# Reduce optimization for lance to avoid recursion_limit overflow
-[profile.release.package.lance]
-opt-level = 2

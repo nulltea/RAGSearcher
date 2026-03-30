@@ -163,6 +163,9 @@ pub mod metadata;
 /// HTTP web server for paper upload and search
 pub mod web;
 
+/// Pattern extraction via Gemini CLI (3-pass pipeline)
+pub mod extraction;
+
 // Library client API (core functionality)
 pub mod client;
 pub use client::RagClient;

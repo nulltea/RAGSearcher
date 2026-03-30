@@ -13,7 +13,11 @@ export type PaperType =
   | "technical_report"
   | "book_chapter";
 
-export type PaperStatus = "processing" | "active" | "archived";
+export type PaperStatus = "processing" | "ready_for_review" | "active" | "archived";
+
+export type Confidence = "high" | "medium" | "low";
+
+export type PatternStatus = "pending" | "approved" | "rejected";
 
 // ============================================================================
 // Paper Types
@@ -81,6 +85,57 @@ export interface SearchRequest {
   limit?: number;
   min_score?: number;
   hybrid?: boolean;
+}
+
+// ============================================================================
+// Pattern Types
+// ============================================================================
+
+export interface PatternResponse {
+  id: string;
+  paper_id: string;
+  name: string;
+  claim: string | null;
+  evidence: string | null;
+  context: string | null;
+  tags: string[];
+  confidence: string;
+  status: PatternStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExtractedPatternResponse {
+  temp_id: string;
+  name: string;
+  claim: string | null;
+  evidence: string | null;
+  context: string | null;
+  tags: string[];
+  confidence: Confidence;
+}
+
+export interface PatternDecision {
+  pattern_id: string;
+  approved: boolean;
+}
+
+export interface PatternReviewResponse {
+  approved_count: number;
+  rejected_count: number;
+  patterns: PatternResponse[];
+}
+
+export interface ExtractResponse {
+  paper_id: string;
+  patterns: PatternResponse[];
+  evidence_count: number;
+  verification_status: string | null;
+  duration_ms: number;
+}
+
+export interface PatternListResponse {
+  patterns: PatternResponse[];
 }
 
 // ============================================================================

@@ -155,7 +155,11 @@ function LibraryContent() {
 
   // Handle view paper
   const handleView = useCallback((paper: PaperResponse) => {
-    router.push(`/search?paper_id=${paper.id}`);
+    if (paper.status === "ready_for_review") {
+      router.push(`/review/${paper.id}`);
+    } else {
+      router.push(`/search?paper_id=${paper.id}`);
+    }
   }, [router]);
 
   const hasMore = papers.length < total;

@@ -11,12 +11,14 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::client::RagClient;
+use crate::extraction::PatternExtractor;
 use crate::metadata::MetadataStore;
 
 pub struct AppState {
     pub client: Arc<RagClient>,
     pub metadata: Arc<MetadataStore>,
     pub upload_dir: PathBuf,
+    pub extractor: Option<Arc<PatternExtractor>>,
 }
 
 pub fn create_router(state: Arc<AppState>) -> Router {
@@ -31,6 +33,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/papers", get(handlers::papers::list_papers))
         .route("/api/papers/{id}", get(handlers::papers::get_paper))
         .route("/api/papers/{id}", delete(handlers::papers::delete_paper))
+        .route("/api/papers/{id}/extract", post(handlers::patterns::extract_patterns))
+        .route("/api/papers/{id}/patterns", get(handlers::patterns::list_patterns))
+        .route("/api/papers/{id}/patterns/review", post(handlers::patterns::submit_review))
+        .route("/api/papers/{id}/patterns", delete(handlers::patterns::delete_patterns))
         .route("/api/search", post(handlers::search::search))
         .route("/api/statistics", get(handlers::search::statistics))
         .layer(cors)
@@ -44,6 +50,7 @@ pub async fn start_server(
     client: Arc<RagClient>,
     metadata: Arc<MetadataStore>,
     upload_dir: PathBuf,
+    extractor: Option<Arc<PatternExtractor>>,
 ) -> anyhow::Result<()> {
     // Ensure upload directory exists
     tokio::fs::create_dir_all(&upload_dir).await?;
@@ -52,6 +59,7 @@ pub async fn start_server(
         client,
         metadata,
         upload_dir,
+        extractor,
     });
 
     let app = create_router(state);

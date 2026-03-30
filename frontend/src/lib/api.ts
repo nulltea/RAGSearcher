@@ -4,11 +4,15 @@
 
 import type {
   ApiError,
+  ExtractResponse,
   HealthResponse,
   PaperListParams,
   PaperListResponse,
   PaperResponse,
   PaperUploadResponse,
+  PatternDecision,
+  PatternListResponse,
+  PatternReviewResponse,
   SearchRequest,
   SearchResponse,
   StatisticsResponse,
@@ -133,6 +137,41 @@ export async function deletePaper(paperId: string): Promise<void> {
 }
 
 // ============================================================================
+// Patterns
+// ============================================================================
+
+export async function extractPatterns(
+  paperId: string,
+): Promise<ExtractResponse> {
+  return request<ExtractResponse>(`/api/papers/${paperId}/extract`, {
+    method: "POST",
+  });
+}
+
+export async function listPatterns(
+  paperId: string,
+  status?: string,
+): Promise<PatternListResponse> {
+  const query = status ? `?status=${status}` : "";
+  return request<PatternListResponse>(
+    `/api/papers/${paperId}/patterns${query}`,
+  );
+}
+
+export async function submitPatternReview(
+  paperId: string,
+  decisions: PatternDecision[],
+): Promise<PatternReviewResponse> {
+  return request<PatternReviewResponse>(
+    `/api/papers/${paperId}/patterns/review`,
+    {
+      method: "POST",
+      body: JSON.stringify({ decisions }),
+    },
+  );
+}
+
+// ============================================================================
 // Search
 // ============================================================================
 
@@ -164,6 +203,11 @@ export const api = {
     list: listPapers,
     get: getPaper,
     delete: deletePaper,
+  },
+  patterns: {
+    extract: extractPatterns,
+    list: listPatterns,
+    submitReview: submitPatternReview,
   },
   search: searchDocuments,
   statistics: getStatistics,

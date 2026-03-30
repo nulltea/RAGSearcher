@@ -8,12 +8,14 @@ import { Calendar, Eye, FileText, Trash2, User } from "lucide-react";
 
 const STATUS_VARIANTS: Record<PaperStatus, "default" | "secondary" | "success" | "warning"> = {
   processing: "warning",
+  ready_for_review: "secondary",
   active: "success",
   archived: "default",
 };
 
 const STATUS_LABELS: Record<PaperStatus, string> = {
   processing: "Processing",
+  ready_for_review: "Ready for Review",
   active: "Active",
   archived: "Archived",
 };
@@ -74,12 +76,12 @@ export function PaperCard({ paper, onView, onDelete, disabled }: PaperCardProps)
           <div className="flex gap-2">
             <Button
               size="sm"
-              variant="outline"
+              variant={paper.status === "ready_for_review" ? "primary" : "outline"}
               onClick={onView}
               disabled={disabled}
             >
               <Eye className="h-4 w-4" />
-              View
+              {paper.status === "ready_for_review" ? "Review" : "View"}
             </Button>
             <Button
               size="sm"

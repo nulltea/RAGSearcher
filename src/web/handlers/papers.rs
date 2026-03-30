@@ -153,6 +153,12 @@ pub async fn upload_paper(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to create paper record: {:#}", e)))?;
 
+    // Save extracted text for later pattern extraction
+    let text_path = state.upload_dir.join(format!("{}.txt", paper_id));
+    tokio::fs::write(&text_path, &content)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to save text content: {}", e)))?;
+
     // Chunk the content
     let file_info = FileInfo {
         path: PathBuf::from(format!("papers/{}", paper_id)),
