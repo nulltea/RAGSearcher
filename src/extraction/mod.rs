@@ -158,6 +158,7 @@ impl PatternExtractor {
             .arg("json")
             .arg("--max-turns")
             .arg("1")
+            .arg("--no-session-persistence")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -205,12 +206,6 @@ impl PatternExtractor {
             tracing::info!("Claude CLI ({}) cost: ${:.4}", model, cost);
         }
 
-        // Clean up session history file to avoid clutter
-        if let Some(session_id) = outer.get("session_id").and_then(|v| v.as_str()) {
-            tracing::debug!("Cleaning up session: {}", session_id);
-            self.cleanup_session(session_id).await;
-        }
-
         let response_text = outer
             .get("result")
             .and_then(|v| v.as_str())
@@ -238,34 +233,6 @@ impl PatternExtractor {
         Ok(parsed)
     }
 
-    /// Remove the session .jsonl file so headless runs don't clutter history.
-    async fn cleanup_session(&self, session_id: &str) {
-        let home = match dirs::home_dir() {
-            Some(h) => h,
-            None => return,
-        };
-        let claude_projects = home.join(".claude").join("projects");
-
-        // Session file lives under ~/.claude/projects/<project-hash>/<session_id>.jsonl
-        // We don't know the project hash, so scan directories for the file.
-        let session_file = format!("{}.jsonl", session_id);
-
-        let Ok(mut entries) = tokio::fs::read_dir(&claude_projects).await else {
-            return;
-        };
-
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let path = entry.path().join(&session_file);
-            if tokio::fs::metadata(&path).await.is_ok() {
-                if let Err(e) = tokio::fs::remove_file(&path).await {
-                    tracing::debug!("Failed to clean up session file {}: {}", path.display(), e);
-                } else {
-                    tracing::debug!("Cleaned up session file: {}", path.display());
-                }
-                return;
-            }
-        }
-    }
 }
 
 /// Strip markdown code fences (```json ... ```) from a string.
