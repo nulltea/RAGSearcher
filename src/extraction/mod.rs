@@ -152,6 +152,7 @@ impl PatternExtractor {
         // We omit the positional prompt arg so Claude reads from stdin instead.
         let mut child = tokio::process::Command::new(&self.claude_path)
             .arg("--print")
+            .arg("--bare")
             .arg("--model")
             .arg(model)
             .arg("--output-format")
