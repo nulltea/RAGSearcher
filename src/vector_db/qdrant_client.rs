@@ -470,6 +470,19 @@ impl VectorDatabase for QdrantVectorDB {
         Ok(0)
     }
 
+    async fn delete_by_project(&self, project: &str) -> Result<usize> {
+        tracing::debug!("Deleting embeddings for project: {}", project);
+
+        let filter = Filter::must([Condition::matches("project", project.to_string())]);
+
+        self.client
+            .delete_points(DeletePointsBuilder::new(COLLECTION_NAME).points(filter))
+            .await
+            .context("Failed to delete points by project")?;
+
+        Ok(0)
+    }
+
     async fn clear(&self) -> Result<()> {
         tracing::info!("Clearing all embeddings from collection");
 

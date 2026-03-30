@@ -157,6 +157,12 @@ pub mod types;
 /// Vector database abstraction supporting LanceDB and Qdrant
 pub mod vector_db;
 
+/// Paper metadata storage (SQLite)
+pub mod metadata;
+
+/// HTTP web server for paper upload and search
+pub mod web;
+
 // Library client API (core functionality)
 pub mod client;
 pub use client::RagClient;

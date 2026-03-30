@@ -800,6 +800,19 @@ impl VectorDatabase for LanceVectorDB {
         Ok(0)
     }
 
+    async fn delete_by_project(&self, project: &str) -> Result<usize> {
+        let table = self.get_table().await?;
+
+        let filter = format!("project = '{}'", project);
+        table
+            .delete(&filter)
+            .await
+            .context("Failed to delete records by project")?;
+
+        tracing::info!("Deleted embeddings for project: {}", project);
+        Ok(0)
+    }
+
     async fn clear(&self) -> Result<()> {
         // Drop and recreate table (empty namespace array for default namespace)
         self.connection

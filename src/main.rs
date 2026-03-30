@@ -1,7 +1,10 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use project_rag::mcp_server::RagMcpServer;
+use project_rag::metadata::MetadataStore;
+use project_rag::RagClient;
 use std::panic;
+use std::sync::Arc;
 
 /// Project-RAG: RAG-based codebase indexing and semantic search MCP server
 #[derive(Parser)]
@@ -17,6 +20,16 @@ struct Cli {
 enum Commands {
     /// Start the MCP server over stdio (default mode)
     Serve,
+
+    /// Start the HTTP web server for paper upload and search
+    Web {
+        /// Port to listen on
+        #[arg(short, long, default_value = "3001")]
+        port: u16,
+        /// Host to bind to
+        #[arg(long, default_value = "0.0.0.0")]
+        host: String,
+    },
 
     /// Show version and system information
     Version,
@@ -35,6 +48,33 @@ async fn main() -> Result<()> {
         Some(Commands::Version) => {
             show_version_info();
             return Ok(());
+        }
+        Some(Commands::Web { port, host }) => {
+            setup_panic_handler();
+
+            let client = Arc::new(
+                RagClient::new()
+                    .await
+                    .expect("Failed to initialize RAG client"),
+            );
+
+            let data_dir = dirs::data_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("project-rag");
+            let db_path = data_dir.join("papers.db");
+            let upload_dir = data_dir.join("uploads");
+
+            let metadata = Arc::new(
+                MetadataStore::new(&db_path).expect("Failed to initialize metadata store"),
+            );
+
+            if let Err(e) =
+                project_rag::web::start_server(&host, port, client, metadata, upload_dir).await
+            {
+                tracing::error!("Fatal error in web server: {:#}", e);
+                eprintln!("Fatal error: {:#}", e);
+                std::process::exit(1);
+            }
         }
         Some(Commands::Serve) | None => {
             // Set up global panic handler

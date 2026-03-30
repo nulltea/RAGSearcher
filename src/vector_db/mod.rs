@@ -59,6 +59,9 @@ pub trait VectorDatabase: Send + Sync {
     /// Delete embeddings for a specific file
     async fn delete_by_file(&self, file_path: &str) -> Result<usize>;
 
+    /// Delete all embeddings for a specific project
+    async fn delete_by_project(&self, project: &str) -> Result<usize>;
+
     /// Clear all embeddings
     async fn clear(&self) -> Result<()>;
 

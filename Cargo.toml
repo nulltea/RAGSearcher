@@ -72,6 +72,11 @@ rayon = "1.10"
 tokio-util = "0.7"
 # Cross-platform file locking for cross-process coordination
 fs2 = "0.4"
+# Web server
+axum = { version = "0.8", features = ["multipart"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+rusqlite = { version = "0.34", features = ["bundled"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
 
 [dev-dependencies]
 tempfile = "3.0"
@@ -112,3 +117,8 @@ path = "src/main.rs"
 [[bench]]
 name = "indexing_benchmark"
 harness = false
+
+[profile.release]
+# Reduce optimization for lance to avoid recursion_limit overflow
+[profile.release.package.lance]
+opt-level = 2
