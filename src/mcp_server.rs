@@ -1,4 +1,6 @@
 use crate::client::RagClient;
+use crate::metadata::MetadataStore;
+use crate::paths::PlatformPaths;
 use crate::types::*;
 
 use anyhow::{Context, Result};
@@ -38,6 +40,7 @@ impl Drop for CancelOnDropGuard {
 #[derive(Clone)]
 pub struct RagMcpServer {
     client: Arc<RagClient>,
+    metadata: Arc<MetadataStore>,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
 }
@@ -46,13 +49,23 @@ impl RagMcpServer {
     /// Create a new RAG MCP server with default configuration
     pub async fn new() -> Result<Self> {
         let client = RagClient::new().await?;
-        Self::with_client(Arc::new(client))
+        let db_path = PlatformPaths::project_data_dir().join("papers.db");
+        let metadata = MetadataStore::new(&db_path)?;
+        Ok(Self {
+            client: Arc::new(client),
+            metadata: Arc::new(metadata),
+            tool_router: Self::tool_router(),
+            prompt_router: Self::prompt_router(),
+        })
     }
 
     /// Create a new RAG MCP server with an existing client
     pub fn with_client(client: Arc<RagClient>) -> Result<Self> {
+        let db_path = PlatformPaths::project_data_dir().join("papers.db");
+        let metadata = MetadataStore::new(&db_path)?;
         Ok(Self {
             client,
+            metadata: Arc::new(metadata),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         })
@@ -67,6 +80,16 @@ impl RagMcpServer {
     pub async fn with_config(config: crate::config::Config) -> Result<Self> {
         let client = RagClient::with_config(config).await?;
         Self::with_client(Arc::new(client))
+    }
+
+    /// Create a new RAG MCP server with an existing client and metadata store
+    pub fn with_client_and_metadata(client: Arc<RagClient>, metadata: Arc<MetadataStore>) -> Result<Self> {
+        Ok(Self {
+            client,
+            metadata,
+            tool_router: Self::tool_router(),
+            prompt_router: Self::prompt_router(),
+        })
     }
 
     /// Normalize a path to a canonical absolute form for consistent cache lookups
@@ -146,8 +169,8 @@ impl RagMcpServer {
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
 
-    #[tool(description = "Query the indexed codebase using semantic search")]
-    async fn query_codebase(
+    #[tool(description = "Search indexed content (code or papers) using semantic search")]
+    async fn query_rag(
         &self,
         Parameters(req): Parameters<QueryRequest>,
     ) -> Result<String, String> {
@@ -275,6 +298,51 @@ impl RagMcpServer {
 
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
+
+    #[tool(description = "Search papers by title, authors, status, or type. Returns paper metadata including chunk count and status.")]
+    async fn search_papers(
+        &self,
+        Parameters(req): Parameters<SearchPapersRequest>,
+    ) -> Result<String, String> {
+        let start = std::time::Instant::now();
+
+        let (papers, total) = self
+            .metadata
+            .search_papers(
+                req.query.as_deref(),
+                req.status.as_deref(),
+                req.paper_type.as_deref(),
+                req.limit,
+                req.offset,
+            )
+            .await
+            .map_err(|e| format!("{:#}", e))?;
+
+        let results: Vec<PaperResult> = papers
+            .into_iter()
+            .map(|p| PaperResult {
+                id: p.id,
+                title: p.title,
+                authors: p.authors,
+                source: p.source,
+                published_date: p.published_date,
+                paper_type: p.paper_type,
+                status: p.status.to_string(),
+                chunk_count: p.chunk_count,
+                created_at: p.created_at,
+            })
+            .collect();
+
+        let response = SearchPapersResponse {
+            total,
+            limit: req.limit,
+            offset: req.offset,
+            duration_ms: start.elapsed().as_millis() as u64,
+            papers: results,
+        };
+
+        serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
+    }
 }
 
 // Prompts for slash commands
@@ -309,7 +377,7 @@ impl RagMcpServer {
 
     #[prompt(
         name = "query",
-        description = "Search the indexed codebase using semantic search"
+        description = "Search indexed content (code or papers) using semantic search"
     )]
     async fn query_prompt(
         &self,
@@ -424,6 +492,26 @@ impl RagMcpServer {
     }
 
     #[prompt(
+        name = "papers",
+        description = "Search papers in the knowledge base by title, authors, status, or type"
+    )]
+    async fn papers_prompt(
+        &self,
+        Parameters(args): Parameters<serde_json::Value>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            if query.is_empty() {
+                "Please list all available papers in the knowledge base.".to_string()
+            } else {
+                format!("Please search for papers matching: {}", query)
+            },
+        )])
+    }
+
+    #[prompt(
         name = "callgraph",
         description = "Get the call graph (callers and callees) for a function at a given location"
     )]
@@ -463,9 +551,9 @@ impl ServerHandler for RagMcpServer {
                 website_url: None,
             },
             instructions: Some(
-                "RAG-based codebase indexing and semantic search. \
+                "RAG-based indexing and semantic search for code and papers. \
                 Use index_codebase to create embeddings (automatically performs full or incremental indexing), \
-                query_codebase to search, and search_by_filters for advanced queries."
+                query_rag to search, and search_by_filters for advanced queries."
                     .into(),
             ),
         }

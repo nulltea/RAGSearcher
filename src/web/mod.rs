@@ -5,8 +5,10 @@ pub mod models;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::routing::{delete, get, post};
+use axum::extract::DefaultBodyLimit;
+use axum::routing::{get, post};
 use axum::Router;
+use axum::http::Method;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -24,23 +26,30 @@ pub struct AppState {
 pub fn create_router(state: Arc<AppState>) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods(Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers(Any);
 
     Router::new()
         .route("/health", get(handlers::health::health))
-        .route("/api/papers", post(handlers::papers::upload_paper))
-        .route("/api/papers", get(handlers::papers::list_papers))
-        .route("/api/papers/{id}", get(handlers::papers::get_paper))
-        .route("/api/papers/{id}", delete(handlers::papers::delete_paper))
+        .route("/api/papers", get(handlers::papers::list_papers)
+            .post(handlers::papers::upload_paper))
+        .route("/api/papers/{id}", get(handlers::papers::get_paper)
+            .delete(handlers::papers::delete_paper))
         .route("/api/papers/{id}/extract", post(handlers::patterns::extract_patterns))
-        .route("/api/papers/{id}/patterns", get(handlers::patterns::list_patterns))
+        .route("/api/papers/{id}/patterns", get(handlers::patterns::list_patterns)
+            .delete(handlers::patterns::delete_patterns))
         .route("/api/papers/{id}/patterns/review", post(handlers::patterns::submit_review))
-        .route("/api/papers/{id}/patterns", delete(handlers::patterns::delete_patterns))
         .route("/api/search", post(handlers::search::search))
         .route("/api/statistics", get(handlers::search::statistics))
-        .layer(cors)
         .layer(TraceLayer::new_for_http())
+        .layer(cors)
+        .layer(DefaultBodyLimit::disable())
         .with_state(state)
 }
 

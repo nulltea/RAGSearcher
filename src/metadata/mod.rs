@@ -379,6 +379,91 @@ impl MetadataStore {
         .await?
     }
 
+    pub async fn search_papers(
+        &self,
+        query: Option<&str>,
+        status: Option<&str>,
+        paper_type: Option<&str>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Paper>, usize)> {
+        let conn = self.conn.clone();
+        let query = query.and_then(|q| if q.trim().is_empty() { None } else { Some(format!("%{}%", q)) });
+        let status = status.map(|s| s.to_string());
+        let paper_type = paper_type.map(|t| t.to_string());
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+
+            let mut where_clauses = Vec::new();
+            let mut bind_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+            if let Some(ref q) = query {
+                let i = bind_values.len() + 1;
+                where_clauses.push(format!("(title LIKE ?{} OR authors LIKE ?{})", i, i + 1));
+                bind_values.push(Box::new(q.clone()));
+                bind_values.push(Box::new(q.clone()));
+            }
+            if let Some(ref s) = status {
+                where_clauses.push(format!("status = ?{}", bind_values.len() + 1));
+                bind_values.push(Box::new(s.clone()));
+            }
+            if let Some(ref pt) = paper_type {
+                where_clauses.push(format!("paper_type = ?{}", bind_values.len() + 1));
+                bind_values.push(Box::new(pt.clone()));
+            }
+
+            let where_sql = if where_clauses.is_empty() {
+                String::new()
+            } else {
+                format!("WHERE {}", where_clauses.join(" AND "))
+            };
+
+            let count_sql = format!("SELECT COUNT(*) FROM papers {}", where_sql);
+            let total: usize = {
+                let mut stmt = conn.prepare(&count_sql)?;
+                let refs: Vec<&dyn rusqlite::types::ToSql> = bind_values.iter().map(|b| b.as_ref()).collect();
+                stmt.query_row(refs.as_slice(), |row| row.get::<_, i64>(0))? as usize
+            };
+
+            let query_sql = format!(
+                "SELECT id, title, authors, source, published_date, paper_type, status, original_filename, chunk_count, created_at, updated_at FROM papers {} ORDER BY created_at DESC LIMIT ?{} OFFSET ?{}",
+                where_sql,
+                bind_values.len() + 1,
+                bind_values.len() + 2,
+            );
+
+            bind_values.push(Box::new(limit as i64));
+            bind_values.push(Box::new(offset as i64));
+
+            let mut stmt = conn.prepare(&query_sql)?;
+            let refs: Vec<&dyn rusqlite::types::ToSql> = bind_values.iter().map(|b| b.as_ref()).collect();
+            let papers = stmt
+                .query_map(refs.as_slice(), |row| {
+                    let authors_json: String = row.get(2)?;
+                    let authors: Vec<String> = serde_json::from_str(&authors_json).unwrap_or_default();
+                    let status_str: String = row.get(6)?;
+                    Ok(Paper {
+                        id: row.get(0)?,
+                        title: row.get(1)?,
+                        authors,
+                        source: row.get(3)?,
+                        published_date: row.get(4)?,
+                        paper_type: row.get(5)?,
+                        status: PaperStatus::from_str(&status_str),
+                        original_filename: row.get(7)?,
+                        chunk_count: row.get::<_, i64>(8)? as usize,
+                        created_at: row.get(9)?,
+                        updated_at: row.get(10)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok((papers, total))
+        })
+        .await?
+    }
+
     pub async fn count_patterns_by_status(
         &self,
         paper_id: &str,

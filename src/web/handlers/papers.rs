@@ -33,7 +33,7 @@ pub async fn upload_paper(
     let mut original_filename: Option<String> = None;
 
     // Parse multipart fields
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|e| ApiError::BadRequest(format!("Failed to read multipart field: {}", e)))?
@@ -42,13 +42,16 @@ pub async fn upload_paper(
         match name.as_str() {
             "file" => {
                 original_filename = field.file_name().map(|s| s.to_string());
-                file_bytes = Some(
-                    field
-                        .bytes()
-                        .await
-                        .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?
-                        .to_vec(),
-                );
+                // Read field in chunks to handle large files
+                let mut data = Vec::new();
+                while let Some(chunk) = field
+                    .chunk()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("Failed to read file chunk: {}", e)))?
+                {
+                    data.extend_from_slice(&chunk);
+                }
+                file_bytes = Some(data);
             }
             "text" => {
                 text_content = Some(

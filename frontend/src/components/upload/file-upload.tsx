@@ -5,7 +5,7 @@ import { FileText, Upload, X } from "lucide-react";
 import { useCallback, useState, type DragEvent } from "react";
 import { Button } from "../ui/button";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 export interface FileUploadProps {
   onFileSelect: (file: File) => void;
@@ -33,7 +33,7 @@ export function FileUpload({
 
       // Validate file size
       if (file.size > MAX_FILE_SIZE) {
-        return "File size must be less than 10MB";
+        return "File size must be less than 50MB";
       }
 
       onFileSelect(file);
@@ -146,7 +146,7 @@ export function FileUpload({
         </p>
         <p className="text-sm text-muted-foreground">or click to browse</p>
         <p className="mt-2 text-xs text-muted-foreground">
-          PDF files only, max 10MB
+          PDF files only, max 50MB
         </p>
       </div>
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}

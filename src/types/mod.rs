@@ -479,6 +479,68 @@ pub struct GetCallGraphResponse {
     pub duration_ms: u64,
 }
 
+/// Request to search papers by keyword and filters
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchPapersRequest {
+    /// Keyword to search in paper title and authors (optional)
+    #[serde(default)]
+    pub query: Option<String>,
+    /// Filter by status: "processing", "ready_for_review", "active", "archived"
+    #[serde(default)]
+    pub status: Option<String>,
+    /// Filter by paper type (e.g. "research_paper")
+    #[serde(default)]
+    pub paper_type: Option<String>,
+    /// Number of results to return (default: 20)
+    #[serde(default = "default_papers_limit")]
+    pub limit: usize,
+    /// Pagination offset (default: 0)
+    #[serde(default)]
+    pub offset: usize,
+}
+
+fn default_papers_limit() -> usize {
+    20
+}
+
+/// A single paper result
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PaperResult {
+    /// Unique paper ID
+    pub id: String,
+    /// Paper title
+    pub title: String,
+    /// List of authors
+    pub authors: Vec<String>,
+    /// Source URL or reference
+    pub source: Option<String>,
+    /// Publication date
+    pub published_date: Option<String>,
+    /// Paper type (e.g. "research_paper")
+    pub paper_type: String,
+    /// Current status: "processing", "ready_for_review", "active", "archived"
+    pub status: String,
+    /// Number of indexed chunks
+    pub chunk_count: usize,
+    /// Creation timestamp (RFC3339)
+    pub created_at: String,
+}
+
+/// Response from search_papers
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchPapersResponse {
+    /// Matching papers
+    pub papers: Vec<PaperResult>,
+    /// Total matching papers (before pagination)
+    pub total: usize,
+    /// Limit used
+    pub limit: usize,
+    /// Offset used
+    pub offset: usize,
+    /// Time taken in milliseconds
+    pub duration_ms: u64,
+}
+
 /// Metadata stored with each code chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {

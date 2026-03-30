@@ -252,7 +252,7 @@ async fn test_server_cloneable() {
 // ===== Tool Handler Tests =====
 
 #[tokio::test]
-async fn test_tool_query_codebase_with_empty_index() {
+async fn test_tool_query_rag_with_empty_index() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("db").to_string_lossy().to_string();
     let cache_path = temp_dir.path().join("cache.json");
@@ -279,7 +279,7 @@ async fn test_tool_query_codebase_with_empty_index() {
 }
 
 #[tokio::test]
-async fn test_tool_query_codebase_validation_failure() {
+async fn test_tool_query_rag_validation_failure() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("db").to_string_lossy().to_string();
     let cache_path = temp_dir.path().join("cache.json");
@@ -746,7 +746,7 @@ async fn test_server_info_completeness() {
     let instructions = info.instructions.as_deref().unwrap();
     assert!(instructions.contains("RAG-based"));
     assert!(instructions.contains("index_codebase"));
-    assert!(instructions.contains("query_codebase"));
+    assert!(instructions.contains("query_rag"));
     assert!(instructions.contains("search_by_filters"));
 }
 

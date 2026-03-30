@@ -15,7 +15,10 @@
       "WebFetch(domain:docs.rs)",
       "Bash(gh api:*)",
       "Bash(rustup toolchain:*)",
-      "Bash(cargo clean:*)"
+      "Bash(cargo clean:*)",
+      "mcp__project-rag__search_papers",
+      "Bash(cargo test:*)",
+      "mcp__project-rag__query_codebase"
     ]
   }
 }

@@ -50,9 +50,10 @@ Return ONLY a JSON object (no markdown fences):
 
 ## Guidelines
 - Use sequential IDs: E1, E2, E3, etc.
-- Quote exactly - do not paraphrase
+- Quote exactly - do not paraphrase, but keep quotes under 100 words each
 - Mark importance as "high" for core findings, "medium" for supporting evidence, "low" for minor details
-- Aim for 12-25 evidence items
+- Aim for 12-20 evidence items
+- Keep the total response under 4000 tokens
 
 ## Paper Text
 {text}"#
@@ -82,9 +83,11 @@ Implications, limitations, connections to other ideas. MUST cite evidence using 
 1. Every assertion MUST cite evidence using [E#] format (e.g., [E1], [E3, E5])
 2. Claim/Evidence/Context must describe DIFFERENT aspects - never repeat the same content
 3. No claim without evidence - if no evidence supports a claim, use null for that field
-4. Extract 3-8 patterns per paper, ranked by importance
+4. Extract 3-6 patterns per paper, ranked by importance
 5. Each pattern needs a short name (3-6 words)
 6. Use only evidence IDs from the provided inventory
+7. Keep claim/evidence/context fields concise (1-2 sentences each)
+8. Keep the total response under 4000 tokens
 
 ## Available Tags
 - methodology, finding, limitation, future-work, experimental-setup, theoretical, practical
@@ -170,6 +173,9 @@ Return ONLY a JSON object (no markdown fences):
 - pass: No errors, few or no warnings, good evidence coverage
 - warn: No errors but has warnings OR significant unused evidence
 - fail: Has errors (invalid citations) OR major accuracy concerns
+
+## Guidelines
+- Be concise. Keep the total response under 2000 tokens.
 
 ## Evidence Inventory
 {evidence_json}

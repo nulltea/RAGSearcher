@@ -40,8 +40,25 @@ impl PatternExtractor {
         tracing::debug!("Pass 1 prompt: {} chars", evidence_prompt.len());
         let evidence_raw = self.call_claude(&evidence_prompt, "haiku").await
             .context("Pass 1 (evidence inventory) failed")?;
-        let evidence: EvidenceInventory = serde_json::from_value(evidence_raw)
-            .context("Failed to parse evidence inventory JSON")?;
+        let raw_str = serde_json::to_string_pretty(&evidence_raw).unwrap_or_default();
+        tracing::info!(
+            "Pass 1 raw JSON type={}, len={}, first 1000 chars:\n{}",
+            match &evidence_raw {
+                serde_json::Value::Object(_) => "object",
+                serde_json::Value::Array(_) => "array",
+                serde_json::Value::String(_) => "string",
+                serde_json::Value::Number(_) => "number",
+                serde_json::Value::Bool(_) => "bool",
+                serde_json::Value::Null => "null",
+            },
+            raw_str.len(),
+            &raw_str[..raw_str.len().min(1000)],
+        );
+        let evidence: EvidenceInventory = serde_json::from_value(evidence_raw.clone())
+            .with_context(|| format!(
+                "Failed to parse evidence inventory JSON. First 500 chars: {}",
+                &raw_str[..raw_str.len().min(500)],
+            ))?;
         tracing::info!(
             "Pass 1 complete in {:.1}s: {} evidence items extracted (paper: \"{}\")",
             pass1_start.elapsed().as_secs_f64(),
@@ -119,7 +136,7 @@ impl PatternExtractor {
     }
 
     /// Call Claude Code CLI in headless mode and parse JSON response.
-    /// Pipes the prompt via stdin to avoid file permission issues.
+    /// Pipes the prompt via stdin to avoid OS argument length limits.
     async fn call_claude(&self, prompt: &str, model: &str) -> Result<serde_json::Value> {
         let start = Instant::now();
         tracing::info!(
@@ -130,24 +147,27 @@ impl PatternExtractor {
 
         use tokio::io::AsyncWriteExt;
 
+        // Claude Code reads the prompt from stdin when piped.
+        // -p (--print) is a flag, not an option — the prompt is positional.
+        // We omit the positional prompt arg so Claude reads from stdin instead.
         let mut child = tokio::process::Command::new(&self.claude_path)
-            .arg("-p")
-            .arg("-")
+            .arg("--print")
             .arg("--model")
             .arg(model)
             .arg("--output-format")
             .arg("json")
+            .arg("--max-turns")
+            .arg("1")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .context("Failed to spawn claude CLI — is it installed?")?;
 
-        // Write prompt to stdin
+        // Write prompt to stdin and close it to signal EOF
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(prompt.as_bytes()).await
                 .context("Failed to write prompt to claude stdin")?;
-            // Drop stdin to close it and signal EOF
         }
 
         let output = child
@@ -185,6 +205,12 @@ impl PatternExtractor {
             tracing::info!("Claude CLI ({}) cost: ${:.4}", model, cost);
         }
 
+        // Clean up session history file to avoid clutter
+        if let Some(session_id) = outer.get("session_id").and_then(|v| v.as_str()) {
+            tracing::debug!("Cleaning up session: {}", session_id);
+            self.cleanup_session(session_id).await;
+        }
+
         let response_text = outer
             .get("result")
             .and_then(|v| v.as_str())
@@ -198,15 +224,10 @@ impl PatternExtractor {
         // Strip markdown code fences if present
         let cleaned = strip_code_fences(response_text);
 
-        tracing::debug!(
-            "Cleaned text (first 500 chars): {}",
-            &cleaned[..cleaned.len().min(500)],
-        );
-
         let parsed: serde_json::Value = serde_json::from_str(&cleaned)
             .with_context(|| format!(
-                "Failed to parse inner JSON from Claude response. First 200 chars: {}",
-                &cleaned[..cleaned.len().min(200)],
+                "Failed to parse inner JSON from Claude response. Last 200 chars: ...{}",
+                &cleaned[cleaned.len().saturating_sub(200)..],
             ))?;
 
         tracing::debug!(
@@ -215,6 +236,35 @@ impl PatternExtractor {
         );
 
         Ok(parsed)
+    }
+
+    /// Remove the session .jsonl file so headless runs don't clutter history.
+    async fn cleanup_session(&self, session_id: &str) {
+        let home = match dirs::home_dir() {
+            Some(h) => h,
+            None => return,
+        };
+        let claude_projects = home.join(".claude").join("projects");
+
+        // Session file lives under ~/.claude/projects/<project-hash>/<session_id>.jsonl
+        // We don't know the project hash, so scan directories for the file.
+        let session_file = format!("{}.jsonl", session_id);
+
+        let Ok(mut entries) = tokio::fs::read_dir(&claude_projects).await else {
+            return;
+        };
+
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path().join(&session_file);
+            if tokio::fs::metadata(&path).await.is_ok() {
+                if let Err(e) = tokio::fs::remove_file(&path).await {
+                    tracing::debug!("Failed to clean up session file {}: {}", path.display(), e);
+                } else {
+                    tracing::debug!("Cleaned up session file: {}", path.display());
+                }
+                return;
+            }
+        }
     }
 }
 
@@ -236,3 +286,4 @@ fn strip_code_fences(s: &str) -> String {
     }
     trimmed.to_string()
 }
+
