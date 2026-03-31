@@ -1,6 +1,6 @@
 "use client";
 
-import { extractPatterns, uploadPaper } from "@/lib/api";
+import { extractAlgorithms, extractPatterns, uploadPaper } from "@/lib/api";
 import type { PaperUploadResponse } from "@/types";
 import { useRouter } from "next/navigation";
 import { AlertCircle, FileText, Loader2, Type } from "lucide-react";
@@ -42,6 +42,12 @@ export default function UploadPage() {
   // Extraction state
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [patternsExtracted, setPatternsExtracted] = useState(false);
+
+  // Algorithm extraction state
+  const [isExtractingAlgorithms, setIsExtractingAlgorithms] = useState(false);
+  const [algorithmError, setAlgorithmError] = useState<string | null>(null);
+  const [algorithmsExtracted, setAlgorithmsExtracted] = useState(false);
 
   const hasContent =
     inputMode === "file" ? selectedFile !== null : textContent.trim().length > 0;
@@ -105,7 +111,7 @@ export default function UploadPage() {
     setExtractError(null);
     try {
       await extractPatterns(result.paper.id);
-      router.push(`/review/${result.paper.id}`);
+      setPatternsExtracted(true);
     } catch (err) {
       setExtractError(
         err instanceof Error ? err.message : "Pattern extraction failed",
@@ -113,7 +119,23 @@ export default function UploadPage() {
     } finally {
       setIsExtracting(false);
     }
-  }, [result, router]);
+  }, [result]);
+
+  const handleExtractAlgorithms = useCallback(async () => {
+    if (!result) return;
+    setIsExtractingAlgorithms(true);
+    setAlgorithmError(null);
+    try {
+      await extractAlgorithms(result.paper.id);
+      setAlgorithmsExtracted(true);
+    } catch (err) {
+      setAlgorithmError(
+        err instanceof Error ? err.message : "Algorithm extraction failed",
+      );
+    } finally {
+      setIsExtractingAlgorithms(false);
+    }
+  }, [result]);
 
   // Show result after successful upload
   if (result) {
@@ -169,20 +191,67 @@ export default function UploadPage() {
                   {extractError}
                 </div>
               )}
-              <Button
-                className="mt-3 w-full"
-                onClick={handleExtractPatterns}
-                disabled={isExtracting}
-              >
-                {isExtracting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Extracting patterns (this may take a minute)...
-                  </>
-                ) : (
-                  "Extract Patterns"
-                )}
-              </Button>
+              {patternsExtracted ? (
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-sm text-green-600">Patterns extracted.</span>
+                  <Link href={`/review/${result.paper.id}`}>
+                    <Button size="sm" variant="outline">Review Patterns</Button>
+                  </Link>
+                </div>
+              ) : (
+                <Button
+                  className="mt-3 w-full"
+                  onClick={handleExtractPatterns}
+                  disabled={isExtracting || isExtractingAlgorithms}
+                >
+                  {isExtracting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Extracting patterns (this may take a minute)...
+                    </>
+                  ) : (
+                    "Extract Patterns"
+                  )}
+                </Button>
+              )}
+            </div>
+
+            {/* Extract Algorithms */}
+            <div className="rounded-lg border border-input bg-card p-4">
+              <h3 className="font-medium">Extract Algorithms</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Use AI to extract step-by-step algorithm/protocol/scheme
+                definitions with LaTeX math notation.
+              </p>
+              {algorithmError && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {algorithmError}
+                </div>
+              )}
+              {algorithmsExtracted ? (
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-sm text-green-600">Algorithms extracted.</span>
+                  <Link href={`/review/${result.paper.id}`}>
+                    <Button size="sm" variant="outline">Review Algorithms</Button>
+                  </Link>
+                </div>
+              ) : (
+                <Button
+                  className="mt-3 w-full"
+                  onClick={handleExtractAlgorithms}
+                  disabled={isExtractingAlgorithms || isExtracting}
+                >
+                  {isExtractingAlgorithms ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Extracting algorithms (this may take a minute)...
+                    </>
+                  ) : (
+                    "Extract Algorithms"
+                  )}
+                </Button>
+              )}
             </div>
 
             {/* Actions */}

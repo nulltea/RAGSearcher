@@ -190,6 +190,8 @@ pub async fn upload_paper(
 
         let mut paper = paper;
         paper.status = PaperStatus::Active;
+        paper.pattern_count = 0;
+        paper.algorithm_count = 0;
         return Ok(Json(PaperUploadResponse {
             paper,
             chunk_count: 0,

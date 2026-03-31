@@ -33,6 +33,8 @@ export interface PaperResponse {
   status: PaperStatus;
   original_filename: string | null;
   chunk_count: number;
+  pattern_count: number;
+  algorithm_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -136,6 +138,61 @@ export interface ExtractResponse {
 
 export interface PatternListResponse {
   patterns: PatternResponse[];
+}
+
+// ============================================================================
+// Algorithm Types
+// ============================================================================
+
+export interface AlgorithmStepResponse {
+  number: number;
+  action: string;
+  details: string;
+  math: string | null;
+}
+
+export interface AlgorithmIOResponse {
+  name: string;
+  type: string;
+  description: string;
+}
+
+export interface AlgorithmResponse {
+  id: string;
+  paper_id: string;
+  name: string;
+  description: string | null;
+  steps: AlgorithmStepResponse[];
+  inputs: AlgorithmIOResponse[];
+  outputs: AlgorithmIOResponse[];
+  preconditions: string[];
+  complexity: string | null;
+  mathematical_notation: string | null;
+  pseudocode: string | null;
+  tags: string[];
+  evidence_ids: string[];
+  confidence: string;
+  status: PatternStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlgorithmListResponse {
+  algorithms: AlgorithmResponse[];
+}
+
+export interface AlgorithmExtractResponse {
+  paper_id: string;
+  algorithms: AlgorithmResponse[];
+  evidence_count: number;
+  verification_status: string | null;
+  duration_ms: number;
+}
+
+export interface AlgorithmReviewResponse {
+  approved_count: number;
+  rejected_count: number;
+  algorithms: AlgorithmResponse[];
 }
 
 // ============================================================================

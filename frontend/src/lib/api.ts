@@ -3,6 +3,9 @@
  */
 
 import type {
+  AlgorithmExtractResponse,
+  AlgorithmListResponse,
+  AlgorithmReviewResponse,
   ApiError,
   ExtractResponse,
   HealthResponse,
@@ -172,6 +175,42 @@ export async function submitPatternReview(
 }
 
 // ============================================================================
+// Algorithms
+// ============================================================================
+
+export async function extractAlgorithms(
+  paperId: string,
+): Promise<AlgorithmExtractResponse> {
+  return request<AlgorithmExtractResponse>(
+    `/api/papers/${paperId}/extract-algorithms`,
+    { method: "POST" },
+  );
+}
+
+export async function listAlgorithms(
+  paperId: string,
+  status?: string,
+): Promise<AlgorithmListResponse> {
+  const query = status ? `?status=${status}` : "";
+  return request<AlgorithmListResponse>(
+    `/api/papers/${paperId}/algorithms${query}`,
+  );
+}
+
+export async function submitAlgorithmReview(
+  paperId: string,
+  decisions: PatternDecision[],
+): Promise<AlgorithmReviewResponse> {
+  return request<AlgorithmReviewResponse>(
+    `/api/papers/${paperId}/algorithms/review`,
+    {
+      method: "POST",
+      body: JSON.stringify({ decisions }),
+    },
+  );
+}
+
+// ============================================================================
 // Search
 // ============================================================================
 
@@ -208,6 +247,11 @@ export const api = {
     extract: extractPatterns,
     list: listPatterns,
     submitReview: submitPatternReview,
+  },
+  algorithms: {
+    extract: extractAlgorithms,
+    list: listAlgorithms,
+    submitReview: submitAlgorithmReview,
   },
   search: searchDocuments,
   statistics: getStatistics,

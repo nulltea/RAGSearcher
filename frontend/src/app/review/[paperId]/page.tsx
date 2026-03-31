@@ -1,36 +1,55 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { PatternCard, ReviewSummary } from "@/components/review";
-import { getPaper, listPatterns, submitPatternReview } from "@/lib/api";
-import type { ExtractedPatternResponse, PatternDecision } from "@/types";
+import { AlgorithmCard, PatternCard, ReviewSummary } from "@/components/review";
+import {
+  getPaper,
+  listAlgorithms,
+  listPatterns,
+  submitAlgorithmReview,
+  submitPatternReview,
+} from "@/lib/api";
+import type {
+  AlgorithmResponse,
+  ExtractedPatternResponse,
+  PatternDecision,
+} from "@/types";
 import { AlertCircle, ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type DecisionState = "pending" | "approved" | "rejected";
-
-interface ReviewData {
-  paperTitle: string;
-  patterns: ExtractedPatternResponse[];
-}
+type Tab = "patterns" | "algorithms";
 
 export default function ReviewPage() {
   const params = useParams();
   const router = useRouter();
   const paperId = params.paperId as string;
 
-  const [data, setData] = useState<ReviewData | null>(null);
+  const [paperTitle, setPaperTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [decisions, setDecisions] = useState<Map<string, DecisionState>>(
-    new Map(),
-  );
+  const [activeTab, setActiveTab] = useState<Tab>("patterns");
+
+  // Patterns state
+  const [patterns, setPatterns] = useState<ExtractedPatternResponse[]>([]);
+  const [patternDecisions, setPatternDecisions] = useState<
+    Map<string, DecisionState>
+  >(new Map());
+
+  // Algorithms state
+  const [algorithms, setAlgorithms] = useState<AlgorithmResponse[]>([]);
+  const [algorithmDecisions, setAlgorithmDecisions] = useState<
+    Map<string, DecisionState>
+  >(new Map());
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{
-    approved: number;
-    rejected: number;
+    approvedPatterns: number;
+    rejectedPatterns: number;
+    approvedAlgorithms: number;
+    rejectedAlgorithms: number;
   } | null>(null);
 
   useEffect(() => {
@@ -39,27 +58,40 @@ export default function ReviewPage() {
         setLoading(true);
         setError(null);
 
-        const [paper, patternsResponse] = await Promise.all([
+        const [paper, patternsRes, algorithmsRes] = await Promise.all([
           getPaper(paperId),
           listPatterns(paperId, "pending"),
+          listAlgorithms(paperId, "pending"),
         ]);
 
-        const patterns: ExtractedPatternResponse[] =
-          patternsResponse.patterns.map((p) => ({
+        setPaperTitle(paper.title);
+
+        const mappedPatterns: ExtractedPatternResponse[] =
+          patternsRes.patterns.map((p) => ({
             temp_id: p.id,
             name: p.name,
             claim: p.claim,
             evidence: p.evidence,
             context: p.context,
             tags: p.tags,
-            confidence: (p.confidence as "high" | "medium" | "low") || "medium",
+            confidence:
+              (p.confidence as "high" | "medium" | "low") || "medium",
           }));
+        setPatterns(mappedPatterns);
 
-        setData({ paperTitle: paper.title, patterns });
+        const pDec = new Map<string, DecisionState>();
+        mappedPatterns.forEach((p) => pDec.set(p.temp_id, "pending"));
+        setPatternDecisions(pDec);
 
-        const initialDecisions = new Map<string, DecisionState>();
-        patterns.forEach((p) => initialDecisions.set(p.temp_id, "pending"));
-        setDecisions(initialDecisions);
+        setAlgorithms(algorithmsRes.algorithms);
+        const aDec = new Map<string, DecisionState>();
+        algorithmsRes.algorithms.forEach((a) => aDec.set(a.id, "pending"));
+        setAlgorithmDecisions(aDec);
+
+        // Auto-select tab based on what's available
+        if (mappedPatterns.length === 0 && algorithmsRes.algorithms.length > 0) {
+          setActiveTab("algorithms");
+        }
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to load paper data",
@@ -68,78 +100,144 @@ export default function ReviewPage() {
         setLoading(false);
       }
     }
-
     loadData();
   }, [paperId]);
 
-  const handleApprove = useCallback((tempId: string) => {
-    setDecisions((prev) => {
+  // Pattern decision handlers
+  const handlePatternApprove = useCallback((id: string) => {
+    setPatternDecisions((prev) => {
       const next = new Map(prev);
-      next.set(tempId, next.get(tempId) === "approved" ? "pending" : "approved");
+      next.set(id, next.get(id) === "approved" ? "pending" : "approved");
       return next;
     });
   }, []);
 
-  const handleReject = useCallback((tempId: string) => {
-    setDecisions((prev) => {
+  const handlePatternReject = useCallback((id: string) => {
+    setPatternDecisions((prev) => {
       const next = new Map(prev);
-      next.set(tempId, next.get(tempId) === "rejected" ? "pending" : "rejected");
+      next.set(id, next.get(id) === "rejected" ? "pending" : "rejected");
       return next;
     });
   }, []);
 
+  // Algorithm decision handlers
+  const handleAlgorithmApprove = useCallback((id: string) => {
+    setAlgorithmDecisions((prev) => {
+      const next = new Map(prev);
+      next.set(id, next.get(id) === "approved" ? "pending" : "approved");
+      return next;
+    });
+  }, []);
+
+  const handleAlgorithmReject = useCallback((id: string) => {
+    setAlgorithmDecisions((prev) => {
+      const next = new Map(prev);
+      next.set(id, next.get(id) === "rejected" ? "pending" : "rejected");
+      return next;
+    });
+  }, []);
+
+  // Bulk actions for active tab
   const handleApproveAll = useCallback(() => {
-    setDecisions((prev) => {
-      const next = new Map(prev);
-      prev.forEach((_, key) => next.set(key, "approved"));
-      return next;
-    });
-  }, []);
+    if (activeTab === "patterns") {
+      setPatternDecisions((prev) => {
+        const next = new Map(prev);
+        prev.forEach((_, k) => next.set(k, "approved"));
+        return next;
+      });
+    } else {
+      setAlgorithmDecisions((prev) => {
+        const next = new Map(prev);
+        prev.forEach((_, k) => next.set(k, "approved"));
+        return next;
+      });
+    }
+  }, [activeTab]);
 
   const handleRejectAll = useCallback(() => {
-    setDecisions((prev) => {
-      const next = new Map(prev);
-      prev.forEach((_, key) => next.set(key, "rejected"));
-      return next;
-    });
-  }, []);
+    if (activeTab === "patterns") {
+      setPatternDecisions((prev) => {
+        const next = new Map(prev);
+        prev.forEach((_, k) => next.set(k, "rejected"));
+        return next;
+      });
+    } else {
+      setAlgorithmDecisions((prev) => {
+        const next = new Map(prev);
+        prev.forEach((_, k) => next.set(k, "rejected"));
+        return next;
+      });
+    }
+  }, [activeTab]);
 
-  const counts = useMemo(() => {
-    let approved = 0;
-    let rejected = 0;
-    decisions.forEach((state) => {
-      if (state === "approved") approved++;
-      if (state === "rejected") rejected++;
+  const patternCounts = useMemo(() => {
+    let approved = 0,
+      rejected = 0;
+    patternDecisions.forEach((s) => {
+      if (s === "approved") approved++;
+      if (s === "rejected") rejected++;
     });
     return { approved, rejected };
-  }, [decisions]);
+  }, [patternDecisions]);
+
+  const algorithmCounts = useMemo(() => {
+    let approved = 0,
+      rejected = 0;
+    algorithmDecisions.forEach((s) => {
+      if (s === "approved") approved++;
+      if (s === "rejected") rejected++;
+    });
+    return { approved, rejected };
+  }, [algorithmDecisions]);
+
+  const activeCounts =
+    activeTab === "patterns" ? patternCounts : algorithmCounts;
+  const activeTotal =
+    activeTab === "patterns" ? patterns.length : algorithms.length;
 
   const handleSubmit = useCallback(async () => {
-    if (!data) return;
-
-    const decisionList: PatternDecision[] = [];
-    decisions.forEach((state, tempId) => {
-      if (state !== "pending") {
-        decisionList.push({
-          pattern_id: tempId,
-          approved: state === "approved",
-        });
-      }
-    });
-
-    if (decisionList.length === 0) {
-      setError("Please approve or reject at least one pattern");
-      return;
-    }
-
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const result = await submitPatternReview(paperId, decisionList);
+      let ap = 0, rp = 0, aa = 0, ra = 0;
+
+      // Submit pattern decisions
+      const patternDecs: PatternDecision[] = [];
+      patternDecisions.forEach((state, id) => {
+        if (state !== "pending") {
+          patternDecs.push({ pattern_id: id, approved: state === "approved" });
+        }
+      });
+      if (patternDecs.length > 0) {
+        const res = await submitPatternReview(paperId, patternDecs);
+        ap = res.approved_count;
+        rp = res.rejected_count;
+      }
+
+      // Submit algorithm decisions
+      const algoDecs: PatternDecision[] = [];
+      algorithmDecisions.forEach((state, id) => {
+        if (state !== "pending") {
+          algoDecs.push({ pattern_id: id, approved: state === "approved" });
+        }
+      });
+      if (algoDecs.length > 0) {
+        const res = await submitAlgorithmReview(paperId, algoDecs);
+        aa = res.approved_count;
+        ra = res.rejected_count;
+      }
+
+      if (patternDecs.length === 0 && algoDecs.length === 0) {
+        setError("Please approve or reject at least one item");
+        return;
+      }
+
       setSubmitResult({
-        approved: result.approved_count,
-        rejected: result.rejected_count,
+        approvedPatterns: ap,
+        rejectedPatterns: rp,
+        approvedAlgorithms: aa,
+        rejectedAlgorithms: ra,
       });
     } catch (err) {
       setError(
@@ -148,7 +246,7 @@ export default function ReviewPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [data, decisions, paperId]);
+  }, [patternDecisions, algorithmDecisions, paperId]);
 
   if (loading) {
     return (
@@ -158,7 +256,7 @@ export default function ReviewPage() {
     );
   }
 
-  if (error && !data) {
+  if (error && patterns.length === 0 && algorithms.length === 0) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <div className="flex items-center gap-2 rounded-lg border border-destructive bg-destructive/10 p-4 text-destructive">
@@ -181,6 +279,10 @@ export default function ReviewPage() {
   }
 
   if (submitResult) {
+    const totalApproved =
+      submitResult.approvedPatterns + submitResult.approvedAlgorithms;
+    const totalRejected =
+      submitResult.rejectedPatterns + submitResult.rejectedAlgorithms;
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <div className="rounded-lg border border-green-500 bg-green-50 p-6 dark:bg-green-950/20">
@@ -191,10 +293,20 @@ export default function ReviewPage() {
                 Review Complete
               </h2>
               <p className="text-muted-foreground">
-                {submitResult.approved} pattern
-                {submitResult.approved !== 1 ? "s" : ""} approved,{" "}
-                {submitResult.rejected} rejected
+                {totalApproved} approved, {totalRejected} rejected
               </p>
+              {submitResult.approvedPatterns > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Patterns: {submitResult.approvedPatterns} approved,{" "}
+                  {submitResult.rejectedPatterns} rejected
+                </p>
+              )}
+              {submitResult.approvedAlgorithms > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Algorithms: {submitResult.approvedAlgorithms} approved,{" "}
+                  {submitResult.rejectedAlgorithms} rejected
+                </p>
+              )}
             </div>
           </div>
           <div className="mt-6 flex gap-3">
@@ -210,12 +322,12 @@ export default function ReviewPage() {
     );
   }
 
-  if (!data || data.patterns.length === 0) {
+  if (patterns.length === 0 && algorithms.length === 0) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <div className="rounded-lg border border-input bg-card p-6 text-center">
           <p className="text-muted-foreground">
-            No pending patterns to review for this paper.
+            No pending items to review for this paper.
           </p>
           <div className="mt-4">
             <Link href="/library">
@@ -230,6 +342,10 @@ export default function ReviewPage() {
     );
   }
 
+  const hasPatterns = patterns.length > 0;
+  const hasAlgorithms = algorithms.length > 0;
+  const showTabs = hasPatterns && hasAlgorithms;
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6">
@@ -240,18 +356,45 @@ export default function ReviewPage() {
           <ArrowLeft className="h-4 w-4" />
           Back to Library
         </Link>
-        <h1 className="text-2xl font-bold text-foreground">Review Patterns</h1>
+        <h1 className="text-2xl font-bold text-foreground">Review</h1>
         <p className="mt-1 text-muted-foreground">
-          Approve or reject extracted patterns to add them to your knowledge
-          base.
+          Approve or reject extracted items for: {paperTitle}
         </p>
       </div>
 
+      {/* Tabs */}
+      {showTabs && (
+        <div className="mb-4 flex gap-1 rounded-lg border border-input bg-card p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("patterns")}
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "patterns"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Patterns ({patterns.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("algorithms")}
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "algorithms"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Algorithms ({algorithms.length})
+          </button>
+        </div>
+      )}
+
       <ReviewSummary
-        paperTitle={data.paperTitle}
-        totalPatterns={data.patterns.length}
-        approvedCount={counts.approved}
-        rejectedCount={counts.rejected}
+        paperTitle={paperTitle}
+        totalPatterns={activeTotal}
+        approvedCount={activeCounts.approved}
+        rejectedCount={activeCounts.rejected}
         onApproveAll={handleApproveAll}
         onRejectAll={handleRejectAll}
         disabled={isSubmitting}
@@ -265,27 +408,46 @@ export default function ReviewPage() {
       )}
 
       <div className="mt-6 space-y-4">
-        {data.patterns.map((pattern) => (
-          <PatternCard
-            key={pattern.temp_id}
-            pattern={pattern}
-            decision={decisions.get(pattern.temp_id) || "pending"}
-            onApprove={() => handleApprove(pattern.temp_id)}
-            onReject={() => handleReject(pattern.temp_id)}
-            disabled={isSubmitting}
-          />
-        ))}
+        {activeTab === "patterns"
+          ? patterns.map((pattern) => (
+              <PatternCard
+                key={pattern.temp_id}
+                pattern={pattern}
+                decision={patternDecisions.get(pattern.temp_id) || "pending"}
+                onApprove={() => handlePatternApprove(pattern.temp_id)}
+                onReject={() => handlePatternReject(pattern.temp_id)}
+                disabled={isSubmitting}
+              />
+            ))
+          : algorithms.map((algo) => (
+              <AlgorithmCard
+                key={algo.id}
+                algorithm={algo}
+                decision={algorithmDecisions.get(algo.id) || "pending"}
+                onApprove={() => handleAlgorithmApprove(algo.id)}
+                onReject={() => handleAlgorithmReject(algo.id)}
+                disabled={isSubmitting}
+              />
+            ))}
       </div>
 
       <div className="sticky bottom-0 mt-6 border-t border-input bg-background py-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            {counts.approved + counts.rejected} of {data.patterns.length}{" "}
-            patterns reviewed
+            {patternCounts.approved + patternCounts.rejected +
+              algorithmCounts.approved + algorithmCounts.rejected}{" "}
+            of {patterns.length + algorithms.length} items reviewed
           </p>
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || counts.approved + counts.rejected === 0}
+            disabled={
+              isSubmitting ||
+              patternCounts.approved +
+                patternCounts.rejected +
+                algorithmCounts.approved +
+                algorithmCounts.rejected ===
+                0
+            }
             size="lg"
           >
             {isSubmitting ? (

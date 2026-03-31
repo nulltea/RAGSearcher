@@ -48,9 +48,13 @@ impl FastEmbedManager {
             _ => 384, // Default to 384 for unknown models
         };
 
+        let cache_dir = crate::paths::PlatformPaths::cache_dir().join("fastembed");
+        tracing::info!("FastEmbed cache dir: {}", cache_dir.display());
+
         let mut options = InitOptions::default();
         options.model_name = model;
         options.show_download_progress = true;
+        options.cache_dir = cache_dir;
 
         let embedding_model =
             TextEmbedding::try_new(options).context("Failed to initialize FastEmbed model")?;

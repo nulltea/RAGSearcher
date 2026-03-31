@@ -86,6 +86,8 @@ pub struct Paper {
     pub status: PaperStatus,
     pub original_filename: Option<String>,
     pub chunk_count: usize,
+    pub pattern_count: usize,
+    pub algorithm_count: usize,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -112,4 +114,41 @@ pub struct PaperListParams {
     pub paper_type: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Algorithm {
+    pub id: String,
+    pub paper_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub steps: Vec<AlgorithmStepRow>,
+    pub inputs: Vec<AlgorithmIORow>,
+    pub outputs: Vec<AlgorithmIORow>,
+    pub preconditions: Vec<String>,
+    pub complexity: Option<String>,
+    pub mathematical_notation: Option<String>,
+    pub pseudocode: Option<String>,
+    pub tags: Vec<String>,
+    pub evidence_ids: Vec<String>,
+    pub confidence: String,
+    pub status: PatternStatus,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlgorithmStepRow {
+    pub number: usize,
+    pub action: String,
+    pub details: String,
+    pub math: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlgorithmIORow {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub io_type: String,
+    pub description: String,
 }

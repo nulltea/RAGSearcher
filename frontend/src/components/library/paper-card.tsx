@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PaperResponse, PaperStatus } from "@/types";
-import { Calendar, Eye, FileText, Trash2, User } from "lucide-react";
+import { Calendar, Code2, FileText, Lightbulb, Search, Sparkles, Trash2, User } from "lucide-react";
+import Link from "next/link";
 
 const STATUS_VARIANTS: Record<PaperStatus, "default" | "secondary" | "success" | "warning"> = {
   processing: "warning",
@@ -24,10 +25,12 @@ export interface PaperCardProps {
   paper: PaperResponse;
   onView: () => void;
   onDelete: () => void;
+  onExtract: () => void;
   disabled?: boolean;
 }
 
-export function PaperCard({ paper, onView, onDelete, disabled }: PaperCardProps) {
+export function PaperCard({ paper, onView, onDelete, onExtract, disabled }: PaperCardProps) {
+  const needsExtraction = paper.pattern_count === 0 || paper.algorithm_count === 0;
   const formattedDate = paper.published_date
     ? new Date(paper.published_date).toLocaleDateString()
     : null;
@@ -74,15 +77,49 @@ export function PaperCard({ paper, onView, onDelete, disabled }: PaperCardProps)
 
           {/* Actions */}
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={paper.status === "ready_for_review" ? "primary" : "outline"}
-              onClick={onView}
-              disabled={disabled}
-            >
-              <Eye className="h-4 w-4" />
-              {paper.status === "ready_for_review" ? "Review" : "View"}
-            </Button>
+            {paper.status === "ready_for_review" && (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={onView}
+                disabled={disabled}
+              >
+                Review
+              </Button>
+            )}
+            <Link href={`/search?paper_id=${paper.id}`}>
+              <Button size="sm" variant="outline" disabled={disabled}>
+                <Search className="h-4 w-4" />
+                Search
+              </Button>
+            </Link>
+            {needsExtraction && paper.status !== "processing" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onExtract}
+                disabled={disabled}
+              >
+                <Sparkles className="h-4 w-4" />
+                Extract
+              </Button>
+            )}
+            {paper.pattern_count > 0 && (
+              <Link href={`/paper/${paper.id}/patterns`}>
+                <Button size="sm" variant="outline" disabled={disabled}>
+                  <Lightbulb className="h-4 w-4" />
+                  Patterns
+                </Button>
+              </Link>
+            )}
+            {paper.algorithm_count > 0 && (
+              <Link href={`/paper/${paper.id}/algorithms`}>
+                <Button size="sm" variant="outline" disabled={disabled}>
+                  <Code2 className="h-4 w-4" />
+                  Algorithms
+                </Button>
+              </Link>
+            )}
             <Button
               size="sm"
               variant="ghost"

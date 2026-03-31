@@ -15,9 +15,9 @@ import {
   PaperCard,
   type FilterState,
 } from "@/components/library";
-import { deletePaper, listPapers } from "@/lib/api";
+import { deletePaper, extractAlgorithms, extractPatterns, listPapers } from "@/lib/api";
 import type { PaperResponse } from "@/types";
-import { AlertCircle, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Lightbulb, Code2, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -48,6 +48,12 @@ function LibraryContent() {
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<PaperResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Extract dialog
+  const [extractTarget, setExtractTarget] = useState<PaperResponse | null>(null);
+  const [extractingPatterns, setExtractingPatterns] = useState(false);
+  const [extractingAlgorithms, setExtractingAlgorithms] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
 
   // Load papers
   const loadPapers = useCallback(
@@ -162,6 +168,42 @@ function LibraryContent() {
     }
   }, [router]);
 
+  // Extract handlers
+  const handleExtractPatterns = useCallback(async () => {
+    if (!extractTarget) return;
+    setExtractingPatterns(true);
+    setExtractError(null);
+    try {
+      await extractPatterns(extractTarget.id);
+      // Refresh papers to update counts
+      loadPapers(true);
+      setExtractTarget(null);
+    } catch (err) {
+      setExtractError(
+        err instanceof Error ? err.message : "Pattern extraction failed",
+      );
+    } finally {
+      setExtractingPatterns(false);
+    }
+  }, [extractTarget, loadPapers]);
+
+  const handleExtractAlgorithms = useCallback(async () => {
+    if (!extractTarget) return;
+    setExtractingAlgorithms(true);
+    setExtractError(null);
+    try {
+      await extractAlgorithms(extractTarget.id);
+      loadPapers(true);
+      setExtractTarget(null);
+    } catch (err) {
+      setExtractError(
+        err instanceof Error ? err.message : "Algorithm extraction failed",
+      );
+    } finally {
+      setExtractingAlgorithms(false);
+    }
+  }, [extractTarget, loadPapers]);
+
   const hasMore = papers.length < total;
 
   return (
@@ -233,6 +275,10 @@ function LibraryContent() {
                 paper={paper}
                 onView={() => handleView(paper)}
                 onDelete={() => setDeleteTarget(paper)}
+                onExtract={() => {
+                  setExtractTarget(paper);
+                  setExtractError(null);
+                }}
               />
             ))}
           </div>
@@ -292,6 +338,85 @@ function LibraryContent() {
                 "Delete"
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Extract dialog */}
+      <Dialog
+        open={extractTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !extractingPatterns && !extractingAlgorithms) {
+            setExtractTarget(null);
+            setExtractError(null);
+          }
+        }}
+      >
+        <DialogContent className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Extract from Paper</DialogTitle>
+            <DialogDescription>
+              Use AI to extract structured data from &quot;{extractTarget?.title}&quot;.
+              Each extraction takes about a minute.
+            </DialogDescription>
+          </DialogHeader>
+          {extractError && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              {extractError}
+            </div>
+          )}
+          <div className="space-y-3">
+            {extractTarget && extractTarget.pattern_count === 0 && (
+              <Button
+                className="w-full justify-start gap-2"
+                variant="outline"
+                onClick={handleExtractPatterns}
+                disabled={extractingPatterns || extractingAlgorithms}
+              >
+                {extractingPatterns ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Lightbulb className="h-4 w-4" />
+                )}
+                {extractingPatterns
+                  ? "Extracting patterns..."
+                  : "Extract Patterns"}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  Claim / Evidence / Context
+                </span>
+              </Button>
+            )}
+            {extractTarget && extractTarget.algorithm_count === 0 && (
+              <Button
+                className="w-full justify-start gap-2"
+                variant="outline"
+                onClick={handleExtractAlgorithms}
+                disabled={extractingPatterns || extractingAlgorithms}
+              >
+                {extractingAlgorithms ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Code2 className="h-4 w-4" />
+                )}
+                {extractingAlgorithms
+                  ? "Extracting algorithms..."
+                  : "Extract Algorithms"}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  Steps / Math / Pseudocode
+                </span>
+              </Button>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button
+                variant="outline"
+                disabled={extractingPatterns || extractingAlgorithms}
+              >
+                Close
+              </Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,4 +1,4 @@
-use crate::metadata::models::{Paper, Pattern};
+use crate::metadata::models::{Algorithm, Paper, Pattern};
 use crate::types::SearchResult;
 use serde::{Deserialize, Serialize};
 
@@ -90,4 +90,27 @@ pub struct PatternReviewResponse {
     pub approved_count: usize,
     pub rejected_count: usize,
     pub patterns: Vec<Pattern>,
+}
+
+// --- Algorithm types ---
+
+#[derive(Debug, Serialize)]
+pub struct AlgorithmExtractResponse {
+    pub paper_id: String,
+    pub algorithms: Vec<Algorithm>,
+    pub evidence_count: usize,
+    pub verification_status: Option<String>,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AlgorithmListResponse {
+    pub algorithms: Vec<Algorithm>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AlgorithmReviewResponse {
+    pub approved_count: usize,
+    pub rejected_count: usize,
+    pub algorithms: Vec<Algorithm>,
 }

@@ -7,23 +7,23 @@ use axum::Json;
 use serde::Deserialize;
 
 use crate::embedding::EmbeddingProvider;
-use crate::metadata::models::{PaperStatus, PatternStatus};
+use crate::metadata::models::{AlgorithmIORow, AlgorithmStepRow, PatternStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
 use crate::web::errors::ApiError;
 use crate::web::models::{
-    ExtractResponse, PatternListResponse, PatternReviewRequest, PatternReviewResponse,
+    AlgorithmExtractResponse, AlgorithmListResponse, AlgorithmReviewResponse,
+    PatternReviewRequest,
 };
 use crate::web::AppState;
 
-/// POST /api/papers/{id}/extract — trigger pattern extraction via Gemini CLI
-pub async fn extract_patterns(
+/// POST /api/papers/{id}/extract-algorithms
+pub async fn extract_algorithms(
     State(state): State<Arc<AppState>>,
     Path(paper_id): Path<String>,
-) -> Result<Json<ExtractResponse>, ApiError> {
+) -> Result<Json<AlgorithmExtractResponse>, ApiError> {
     let start = Instant::now();
 
-    // Verify paper exists
     let paper = state
         .metadata
         .get_paper(&paper_id)
@@ -31,7 +31,6 @@ pub async fn extract_patterns(
         .map_err(|e| ApiError::Internal(format!("{:#}", e)))?
         .ok_or_else(|| ApiError::NotFound(format!("Paper '{}' not found", paper_id)))?;
 
-    // Read saved text content
     let text_path = state.upload_dir.join(format!("{}.txt", paper_id));
     let text = tokio::fs::read_to_string(&text_path).await.map_err(|e| {
         ApiError::Internal(format!(
@@ -42,46 +41,83 @@ pub async fn extract_patterns(
     })?;
 
     let extractor = state
-        .extractor
+        .algorithm_extractor
         .as_ref()
-        .ok_or_else(|| ApiError::Internal("Pattern extractor not configured".to_string()))?;
+        .ok_or_else(|| ApiError::Internal("Algorithm extractor not configured".to_string()))?;
 
-    // Run 3-pass extraction
+    // TODO: could load existing evidence from prior pattern extraction
     let result = extractor
-        .extract_patterns(&text)
+        .extract_algorithms(&text, None)
         .await
-        .map_err(|e| ApiError::Internal(format!("Extraction failed: {:#}", e)))?;
+        .map_err(|e| ApiError::Internal(format!("Algorithm extraction failed: {:#}", e)))?;
 
-    // Delete any existing patterns for this paper (re-extraction)
+    // Delete any existing algorithms for this paper (re-extraction)
     state
         .metadata
-        .delete_patterns_by_paper(&paper_id)
+        .delete_algorithms_by_paper(&paper_id)
         .await
         .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
 
-    // Save patterns to SQLite
-    let mut patterns = Vec::new();
-    for p in &result.patterns {
-        let pattern = state
+    // Save algorithms to SQLite
+    let mut algorithms = Vec::new();
+    for a in &result.algorithms {
+        let steps: Vec<AlgorithmStepRow> = a
+            .steps
+            .iter()
+            .map(|s| AlgorithmStepRow {
+                number: s.number,
+                action: s.action.clone(),
+                details: s.details.clone(),
+                math: s.math.clone(),
+            })
+            .collect();
+
+        let inputs: Vec<AlgorithmIORow> = a
+            .inputs
+            .iter()
+            .map(|io| AlgorithmIORow {
+                name: io.name.clone(),
+                io_type: io.io_type.clone(),
+                description: io.description.clone(),
+            })
+            .collect();
+
+        let outputs: Vec<AlgorithmIORow> = a
+            .outputs
+            .iter()
+            .map(|io| AlgorithmIORow {
+                name: io.name.clone(),
+                io_type: io.io_type.clone(),
+                description: io.description.clone(),
+            })
+            .collect();
+
+        let algorithm = state
             .metadata
-            .create_pattern(
+            .create_algorithm(
                 &paper_id,
-                &p.name,
-                p.claim.as_deref(),
-                p.evidence.as_deref(),
-                p.context.as_deref(),
-                &p.tags,
-                &p.confidence,
+                &a.name,
+                Some(&a.description),
+                &steps,
+                &inputs,
+                &outputs,
+                &a.preconditions,
+                a.complexity.as_deref(),
+                a.mathematical_notation.as_deref(),
+                a.pseudocode.as_deref(),
+                &a.tags,
+                &a.evidence_ids,
+                &a.confidence,
             )
             .await
             .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
-        patterns.push(pattern);
+        algorithms.push(algorithm);
     }
 
     // Update paper status to ready_for_review
     state
         .metadata
-        .update_paper_status(&paper_id, PaperStatus::ReadyForReview, paper.chunk_count)
+        .update_paper_status(&paper_id, crate::metadata::models::PaperStatus::ReadyForReview, paper.chunk_count)
         .await
         .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
 
@@ -90,9 +126,9 @@ pub async fn extract_patterns(
         .as_ref()
         .map(|v| v.verification_status.clone());
 
-    Ok(Json(ExtractResponse {
+    Ok(Json(AlgorithmExtractResponse {
         paper_id,
-        patterns,
+        algorithms,
         evidence_count: result.evidence.evidence_items.len(),
         verification_status,
         duration_ms: start.elapsed().as_millis() as u64,
@@ -100,31 +136,31 @@ pub async fn extract_patterns(
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PatternListParams {
+pub struct AlgorithmListParams {
     pub status: Option<String>,
 }
 
-/// GET /api/papers/{id}/patterns — list patterns for a paper
-pub async fn list_patterns(
+/// GET /api/papers/{id}/algorithms
+pub async fn list_algorithms(
     State(state): State<Arc<AppState>>,
     Path(paper_id): Path<String>,
-    Query(params): Query<PatternListParams>,
-) -> Result<Json<PatternListResponse>, ApiError> {
-    let patterns = state
+    Query(params): Query<AlgorithmListParams>,
+) -> Result<Json<AlgorithmListResponse>, ApiError> {
+    let algorithms = state
         .metadata
-        .list_patterns(&paper_id, params.status.as_deref())
+        .list_algorithms(&paper_id, params.status.as_deref())
         .await
         .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
 
-    Ok(Json(PatternListResponse { patterns }))
+    Ok(Json(AlgorithmListResponse { algorithms }))
 }
 
-/// POST /api/papers/{id}/patterns/review — submit review decisions
-pub async fn submit_review(
+/// POST /api/papers/{id}/algorithms/review — submit review decisions
+pub async fn submit_algorithm_review(
     State(state): State<Arc<AppState>>,
     Path(paper_id): Path<String>,
     Json(request): Json<PatternReviewRequest>,
-) -> Result<Json<PatternReviewResponse>, ApiError> {
+) -> Result<Json<AlgorithmReviewResponse>, ApiError> {
     if request.decisions.is_empty() {
         return Err(ApiError::BadRequest(
             "At least one decision is required".to_string(),
@@ -145,31 +181,28 @@ pub async fn submit_review(
 
         state
             .metadata
-            .update_pattern_status(&decision.pattern_id, status)
+            .update_algorithm_status(&decision.pattern_id, status)
             .await
             .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
     }
 
-    // Embed approved patterns into LanceDB
+    // Embed approved algorithms into LanceDB
     if approved_count > 0 {
         let approved = state
             .metadata
-            .list_patterns(&paper_id, Some("approved"))
+            .list_algorithms(&paper_id, Some("approved"))
             .await
             .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
 
         let texts: Vec<String> = approved
             .iter()
-            .map(|p| {
-                let mut parts = vec![p.name.clone()];
-                if let Some(ref c) = p.claim {
-                    parts.push(c.clone());
+            .map(|a| {
+                let mut parts = vec![a.name.clone()];
+                if let Some(ref d) = a.description {
+                    parts.push(d.clone());
                 }
-                if let Some(ref e) = p.evidence {
-                    parts.push(e.clone());
-                }
-                if let Some(ref ctx) = p.context {
-                    parts.push(ctx.clone());
+                for step in &a.steps {
+                    parts.push(format!("{}. {}", step.number, step.action));
                 }
                 parts.join(" | ")
             })
@@ -177,16 +210,16 @@ pub async fn submit_review(
 
         let metadata: Vec<ChunkMetadata> = approved
             .iter()
-            .map(|p| ChunkMetadata {
-                file_path: format!("patterns/{}", p.paper_id),
-                root_path: Some("patterns".to_string()),
+            .map(|a| ChunkMetadata {
+                file_path: format!("algorithms/{}", a.paper_id),
+                root_path: Some("algorithms".to_string()),
                 start_line: 0,
                 end_line: 0,
-                language: Some("Pattern".to_string()),
-                extension: Some("pattern".to_string()),
-                file_hash: p.id.clone(),
+                language: Some("Algorithm".to_string()),
+                extension: Some("algorithm".to_string()),
+                file_hash: a.id.clone(),
                 indexed_at: chrono::Utc::now().timestamp(),
-                project: Some(format!("pattern:{}", p.paper_id)),
+                project: Some(format!("algorithm:{}", a.paper_id)),
             })
             .collect();
 
@@ -201,12 +234,14 @@ pub async fn submit_review(
         state
             .client
             .vector_db
-            .store_embeddings(embeddings, metadata, contents, "patterns")
+            .store_embeddings(embeddings, metadata, contents, "algorithms")
             .await
-            .map_err(|e| ApiError::Internal(format!("Failed to store pattern embeddings: {:#}", e)))?;
+            .map_err(|e| {
+                ApiError::Internal(format!("Failed to store algorithm embeddings: {:#}", e))
+            })?;
     }
 
-    // Check if all items (patterns + algorithms) are reviewed; if so, update paper to active
+    // Check if all items (patterns + algorithms) are reviewed; if so, mark paper active
     let (pending_patterns, _, _) = state
         .metadata
         .count_patterns_by_status(&paper_id)
@@ -227,38 +262,37 @@ pub async fn submit_review(
         if let Some(p) = paper {
             state
                 .metadata
-                .update_paper_status(&paper_id, PaperStatus::Active, p.chunk_count)
+                .update_paper_status(&paper_id, crate::metadata::models::PaperStatus::Active, p.chunk_count)
                 .await
                 .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
         }
     }
 
-    let patterns = state
+    let algorithms = state
         .metadata
-        .list_patterns(&paper_id, None)
+        .list_algorithms(&paper_id, None)
         .await
         .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
 
-    Ok(Json(PatternReviewResponse {
+    Ok(Json(AlgorithmReviewResponse {
         approved_count,
         rejected_count,
-        patterns,
+        algorithms,
     }))
 }
 
-/// DELETE /api/papers/{id}/patterns — delete all patterns for a paper
-pub async fn delete_patterns(
+/// DELETE /api/papers/{id}/algorithms
+pub async fn delete_algorithms(
     State(state): State<Arc<AppState>>,
     Path(paper_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     state
         .metadata
-        .delete_patterns_by_paper(&paper_id)
+        .delete_algorithms_by_paper(&paper_id)
         .await
         .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
 
-    // Also delete pattern embeddings from vector DB
-    let project = format!("pattern:{}", paper_id);
+    let project = format!("algorithm:{}", paper_id);
     state
         .client
         .vector_db

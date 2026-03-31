@@ -2,7 +2,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 /// Deserialize any JSON value as a String.
 /// Objects/arrays get serialized to their JSON representation.
-fn string_or_json<'de, D>(deserializer: D) -> Result<String, D::Error>
+pub fn string_or_json<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -15,7 +15,7 @@ where
 }
 
 /// Same as string_or_json but returns empty string for missing/null fields.
-fn string_or_json_default<'de, D>(deserializer: D) -> Result<String, D::Error>
+pub fn string_or_json_default<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -28,7 +28,7 @@ where
 }
 
 /// Deserialize an Option<String> that might come as a JSON object.
-fn opt_string_or_json<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+pub fn opt_string_or_json<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -41,7 +41,7 @@ where
 }
 
 /// Deserialize a usize that might come as a string.
-fn usize_or_string<'de, D>(deserializer: D) -> Result<usize, D::Error>
+pub fn usize_or_string<'de, D>(deserializer: D) -> Result<usize, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -86,7 +86,7 @@ where
 }
 
 /// Deserialize a Vec<String> that might contain non-string elements.
-fn flexible_string_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+pub fn flexible_string_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
     D: Deserializer<'de>,
 {

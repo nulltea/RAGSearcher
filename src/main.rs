@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use project_rag::extraction::PatternExtractor;
+use project_rag::extraction::{AlgorithmExtractor, PatternExtractor};
 use project_rag::mcp_server::RagMcpServer;
 use project_rag::metadata::MetadataStore;
 use project_rag::RagClient;
@@ -70,9 +70,10 @@ async fn main() -> Result<()> {
             );
 
             let extractor = Arc::new(PatternExtractor::new());
+            let algorithm_extractor = Arc::new(AlgorithmExtractor::new());
 
             if let Err(e) =
-                project_rag::web::start_server(&host, port, client, metadata, upload_dir, Some(extractor)).await
+                project_rag::web::start_server(&host, port, client, metadata, upload_dir, Some(extractor), Some(algorithm_extractor)).await
             {
                 tracing::error!("Fatal error in web server: {:#}", e);
                 eprintln!("Fatal error: {:#}", e);

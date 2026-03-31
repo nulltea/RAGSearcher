@@ -1,3 +1,4 @@
+pub mod algorithms;
 pub mod models;
 
 use anyhow::{Context, Result};
@@ -43,6 +44,25 @@ impl MetadataStore {
                 evidence TEXT,
                 context TEXT,
                 tags TEXT NOT NULL DEFAULT '[]',
+                confidence TEXT NOT NULL DEFAULT 'medium',
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS algorithms (
+                id TEXT PRIMARY KEY,
+                paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                description TEXT,
+                steps TEXT NOT NULL DEFAULT '[]',
+                inputs TEXT NOT NULL DEFAULT '[]',
+                outputs TEXT NOT NULL DEFAULT '[]',
+                preconditions TEXT NOT NULL DEFAULT '[]',
+                complexity TEXT,
+                mathematical_notation TEXT,
+                pseudocode TEXT,
+                tags TEXT NOT NULL DEFAULT '[]',
+                evidence_ids TEXT NOT NULL DEFAULT '[]',
                 confidence TEXT NOT NULL DEFAULT 'medium',
                 status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL,
@@ -93,6 +113,8 @@ impl MetadataStore {
                 status: PaperStatus::Processing,
                 original_filename: create.original_filename,
                 chunk_count: 0,
+                pattern_count: 0,
+                algorithm_count: 0,
                 created_at: now.clone(),
                 updated_at: now,
             })
@@ -107,7 +129,10 @@ impl MetadataStore {
         tokio::task::spawn_blocking(move || {
             let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let mut stmt = conn.prepare(
-                "SELECT id, title, authors, source, published_date, paper_type, status, original_filename, chunk_count, created_at, updated_at FROM papers WHERE id = ?1",
+                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.chunk_count, p.created_at, p.updated_at,
+                 (SELECT COUNT(*) FROM patterns WHERE paper_id = p.id) as pattern_count,
+                 (SELECT COUNT(*) FROM algorithms WHERE paper_id = p.id) as algorithm_count
+                 FROM papers p WHERE p.id = ?1",
             )?;
 
             let paper = stmt.query_row(rusqlite::params![id], |row| {
@@ -125,6 +150,8 @@ impl MetadataStore {
                     status: PaperStatus::from_str(&status_str),
                     original_filename: row.get(7)?,
                     chunk_count: row.get::<_, i64>(8)? as usize,
+                    pattern_count: row.get::<_, i64>(11)? as usize,
+                    algorithm_count: row.get::<_, i64>(12)? as usize,
                     created_at: row.get(9)?,
                     updated_at: row.get(10)?,
                 })
@@ -147,11 +174,11 @@ impl MetadataStore {
             let mut bind_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
             if let Some(ref status) = params.status {
-                where_clauses.push(format!("status = ?{}", bind_values.len() + 1));
+                where_clauses.push(format!("p.status = ?{}", bind_values.len() + 1));
                 bind_values.push(Box::new(status.clone()));
             }
             if let Some(ref paper_type) = params.paper_type {
-                where_clauses.push(format!("paper_type = ?{}", bind_values.len() + 1));
+                where_clauses.push(format!("p.paper_type = ?{}", bind_values.len() + 1));
                 bind_values.push(Box::new(paper_type.clone()));
             }
 
@@ -162,7 +189,7 @@ impl MetadataStore {
             };
 
             // Get total count
-            let count_sql = format!("SELECT COUNT(*) FROM papers {}", where_sql);
+            let count_sql = format!("SELECT COUNT(*) FROM papers p {}", where_sql);
             let total: usize = {
                 let mut stmt = conn.prepare(&count_sql)?;
                 let refs: Vec<&dyn rusqlite::types::ToSql> = bind_values.iter().map(|b| b.as_ref()).collect();
@@ -171,7 +198,10 @@ impl MetadataStore {
 
             // Get paginated results
             let query_sql = format!(
-                "SELECT id, title, authors, source, published_date, paper_type, status, original_filename, chunk_count, created_at, updated_at FROM papers {} ORDER BY created_at DESC LIMIT ?{} OFFSET ?{}",
+                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.chunk_count, p.created_at, p.updated_at,
+                 (SELECT COUNT(*) FROM patterns WHERE paper_id = p.id) as pattern_count,
+                 (SELECT COUNT(*) FROM algorithms WHERE paper_id = p.id) as algorithm_count
+                 FROM papers p {} ORDER BY p.created_at DESC LIMIT ?{} OFFSET ?{}",
                 where_sql,
                 bind_values.len() + 1,
                 bind_values.len() + 2,
@@ -198,6 +228,8 @@ impl MetadataStore {
                         status: PaperStatus::from_str(&status_str),
                         original_filename: row.get(7)?,
                         chunk_count: row.get::<_, i64>(8)? as usize,
+                        pattern_count: row.get::<_, i64>(11)? as usize,
+                        algorithm_count: row.get::<_, i64>(12)? as usize,
                         created_at: row.get(9)?,
                         updated_at: row.get(10)?,
                     })
@@ -400,16 +432,16 @@ impl MetadataStore {
 
             if let Some(ref q) = query {
                 let i = bind_values.len() + 1;
-                where_clauses.push(format!("(title LIKE ?{} OR authors LIKE ?{})", i, i + 1));
+                where_clauses.push(format!("(p.title LIKE ?{} OR p.authors LIKE ?{})", i, i + 1));
                 bind_values.push(Box::new(q.clone()));
                 bind_values.push(Box::new(q.clone()));
             }
             if let Some(ref s) = status {
-                where_clauses.push(format!("status = ?{}", bind_values.len() + 1));
+                where_clauses.push(format!("p.status = ?{}", bind_values.len() + 1));
                 bind_values.push(Box::new(s.clone()));
             }
             if let Some(ref pt) = paper_type {
-                where_clauses.push(format!("paper_type = ?{}", bind_values.len() + 1));
+                where_clauses.push(format!("p.paper_type = ?{}", bind_values.len() + 1));
                 bind_values.push(Box::new(pt.clone()));
             }
 
@@ -419,7 +451,7 @@ impl MetadataStore {
                 format!("WHERE {}", where_clauses.join(" AND "))
             };
 
-            let count_sql = format!("SELECT COUNT(*) FROM papers {}", where_sql);
+            let count_sql = format!("SELECT COUNT(*) FROM papers p {}", where_sql);
             let total: usize = {
                 let mut stmt = conn.prepare(&count_sql)?;
                 let refs: Vec<&dyn rusqlite::types::ToSql> = bind_values.iter().map(|b| b.as_ref()).collect();
@@ -427,7 +459,10 @@ impl MetadataStore {
             };
 
             let query_sql = format!(
-                "SELECT id, title, authors, source, published_date, paper_type, status, original_filename, chunk_count, created_at, updated_at FROM papers {} ORDER BY created_at DESC LIMIT ?{} OFFSET ?{}",
+                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.chunk_count, p.created_at, p.updated_at,
+                 (SELECT COUNT(*) FROM patterns WHERE paper_id = p.id) as pattern_count,
+                 (SELECT COUNT(*) FROM algorithms WHERE paper_id = p.id) as algorithm_count
+                 FROM papers p {} ORDER BY p.created_at DESC LIMIT ?{} OFFSET ?{}",
                 where_sql,
                 bind_values.len() + 1,
                 bind_values.len() + 2,
@@ -453,6 +488,8 @@ impl MetadataStore {
                         status: PaperStatus::from_str(&status_str),
                         original_filename: row.get(7)?,
                         chunk_count: row.get::<_, i64>(8)? as usize,
+                        pattern_count: row.get::<_, i64>(11)? as usize,
+                        algorithm_count: row.get::<_, i64>(12)? as usize,
                         created_at: row.get(9)?,
                         updated_at: row.get(10)?,
                     })
