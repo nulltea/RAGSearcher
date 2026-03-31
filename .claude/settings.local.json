@@ -20,7 +20,21 @@
       "Bash(cargo test:*)",
       "mcp__project-rag__query_codebase",
       "Bash(npm run:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "mcp__project-rag__index_codebase",
+      "Bash(cargo install:*)",
+      "Bash(cargo tauri:*)",
+      "Bash(pkill -f \"cargo tauri\")",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(curl -s http://127.0.0.1:62196/health)",
+      "Bash(pkill -f \"project-rag-desktop\")",
+      "Bash(mkdir -p icon.iconset)",
+      "Bash(sips -z 16 16 icon.png --out icon.iconset/icon_16x16.png)",
+      "Bash(sips -z 32 32 icon.png --out icon.iconset/icon_16x16@2x.png)",
+      "Bash(sips -z 32 32 icon.png --out icon.iconset/icon_32x32.png)",
+      "Bash(sips -z 64 64 icon.png --out icon.iconset/icon_32x32@2x.png)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
