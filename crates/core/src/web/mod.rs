@@ -87,3 +87,34 @@ pub async fn start_server(
 
     Ok(())
 }
+
+/// Start the backend on a random port, returning the port and a join handle.
+/// Used by the Tauri desktop app to embed the backend in-process.
+pub async fn start_server_background(
+    client: Arc<RagClient>,
+    metadata: Arc<MetadataStore>,
+    upload_dir: PathBuf,
+    extractor: Option<Arc<PatternExtractor>>,
+    algorithm_extractor: Option<Arc<AlgorithmExtractor>>,
+) -> anyhow::Result<(u16, tokio::task::JoinHandle<()>)> {
+    tokio::fs::create_dir_all(&upload_dir).await?;
+
+    let state = Arc::new(AppState {
+        client,
+        metadata,
+        upload_dir,
+        extractor,
+        algorithm_extractor,
+    });
+
+    let app = create_router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+
+    tracing::info!("Starting background web server on 127.0.0.1:{}", port);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.ok();
+    });
+
+    Ok((port, handle))
+}

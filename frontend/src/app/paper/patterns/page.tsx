@@ -8,12 +8,12 @@ import { getPaper, listPatterns } from "@/lib/api";
 import type { PaperResponse, PatternResponse } from "@/types";
 import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
-export default function PatternsPage() {
-  const params = useParams();
-  const paperId = params.paperId as string;
+function PatternsContent() {
+  const searchParams = useSearchParams();
+  const paperId = searchParams.get("id") || "";
 
   const [paper, setPaper] = useState<PaperResponse | null>(null);
   const [patterns, setPatterns] = useState<PatternResponse[]>([]);
@@ -21,6 +21,7 @@ export default function PatternsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!paperId) return;
     async function load() {
       try {
         setLoading(true);
@@ -40,6 +41,20 @@ export default function PatternsPage() {
     }
     load();
   }, [paperId]);
+
+  if (!paperId) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <p className="text-muted-foreground">No paper ID provided.</p>
+        <Link href="/library">
+          <Button variant="outline" className="mt-4">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Library
+          </Button>
+        </Link>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -100,6 +115,20 @@ export default function PatternsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PatternsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[400px] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <PatternsContent />
+    </Suspense>
   );
 }
 

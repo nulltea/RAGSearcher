@@ -32,7 +32,7 @@ fn main() {
     #[cfg(not(feature = "qdrant-backend"))]
     println!("cargo:rustc-env=VECTOR_DB_BACKEND=LanceDB");
 
-    // Rerun if git HEAD changes
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs/heads");
+    // Rerun if git HEAD changes (paths relative to workspace root)
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/refs/heads");
 }

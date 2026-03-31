@@ -202,7 +202,7 @@ export default function UploadPage() {
               {patternsExtracted ? (
                 <div className="mt-3 flex items-center gap-2">
                   <span className="text-sm text-green-600">Patterns extracted.</span>
-                  <Link href={`/review/${result.paper.id}`}>
+                  <Link href={`/review?id=${result.paper.id}`}>
                     <Button size="sm" variant="outline">Review Patterns</Button>
                   </Link>
                 </div>
@@ -240,7 +240,7 @@ export default function UploadPage() {
               {algorithmsExtracted ? (
                 <div className="mt-3 flex items-center gap-2">
                   <span className="text-sm text-green-600">Algorithms extracted.</span>
-                  <Link href={`/review/${result.paper.id}`}>
+                  <Link href={`/review?id=${result.paper.id}`}>
                     <Button size="sm" variant="outline">Review Algorithms</Button>
                   </Link>
                 </div>

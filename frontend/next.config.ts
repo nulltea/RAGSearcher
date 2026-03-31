@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Enable standalone output for Docker deployment
-  output: "standalone",
+  output: "export",
+  trailingSlash: true,
 };
 
 export default nextConfig;

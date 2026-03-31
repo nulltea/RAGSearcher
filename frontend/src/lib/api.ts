@@ -21,7 +21,22 @@ import type {
   StatisticsResponse,
 } from "@/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// Runtime API URL resolution — in Tauri, the backend port is dynamic.
+let _apiUrl: string | null = null;
+
+async function getApiUrl(): Promise<string> {
+  if (_apiUrl) return _apiUrl;
+
+  if (typeof window !== "undefined" && "__TAURI__" in window) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const port = await invoke<number>("get_backend_port");
+    _apiUrl = `http://127.0.0.1:${port}`;
+  } else {
+    _apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  }
+
+  return _apiUrl;
+}
 
 // ============================================================================
 // Error Handling
@@ -64,7 +79,8 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const apiUrl = await getApiUrl();
+  const response = await fetch(`${apiUrl}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -87,7 +103,8 @@ async function requestFormData<T>(
   path: string,
   formData: FormData,
 ): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const apiUrl = await getApiUrl();
+  const response = await fetch(`${apiUrl}${path}`, {
     method: "POST",
     body: formData,
   });

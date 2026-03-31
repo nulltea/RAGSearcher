@@ -105,7 +105,7 @@ export function PaperCard({ paper, onView, onDelete, onExtract, disabled }: Pape
               </Button>
             )}
             {paper.pattern_count > 0 && (
-              <Link href={`/paper/${paper.id}/patterns`}>
+              <Link href={`/paper/patterns?id=${paper.id}`}>
                 <Button size="sm" variant="outline" disabled={disabled}>
                   <Lightbulb className="h-4 w-4" />
                   Patterns
@@ -113,7 +113,7 @@ export function PaperCard({ paper, onView, onDelete, onExtract, disabled }: Pape
               </Link>
             )}
             {paper.algorithm_count > 0 && (
-              <Link href={`/paper/${paper.id}/algorithms`}>
+              <Link href={`/paper/algorithms?id=${paper.id}`}>
                 <Button size="sm" variant="outline" disabled={disabled}>
                   <Code2 className="h-4 w-4" />
                   Algorithms

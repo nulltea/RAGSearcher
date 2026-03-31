@@ -16,16 +16,16 @@ import type {
 } from "@/types";
 import { AlertCircle, ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 type DecisionState = "pending" | "approved" | "rejected";
 type Tab = "patterns" | "algorithms";
 
-export default function ReviewPage() {
-  const params = useParams();
+function ReviewContent() {
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const paperId = params.paperId as string;
+  const paperId = searchParams.get("id") || "";
 
   const [paperTitle, setPaperTitle] = useState("");
   const [loading, setLoading] = useState(true);
@@ -53,6 +53,7 @@ export default function ReviewPage() {
   } | null>(null);
 
   useEffect(() => {
+    if (!paperId) return;
     async function loadData() {
       try {
         setLoading(true);
@@ -247,6 +248,20 @@ export default function ReviewPage() {
       setIsSubmitting(false);
     }
   }, [patternDecisions, algorithmDecisions, paperId]);
+
+  if (!paperId) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <p className="text-muted-foreground">No paper ID provided.</p>
+        <Link href="/library">
+          <Button variant="outline" className="mt-4">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Library
+          </Button>
+        </Link>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -462,5 +477,19 @@ export default function ReviewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ReviewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[400px] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <ReviewContent />
+    </Suspense>
   );
 }
