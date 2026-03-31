@@ -179,6 +179,89 @@ pub struct SearchPapersResponse {
     pub duration_ms: u64,
 }
 
+fn default_algorithms_limit() -> usize {
+    20
+}
+
+fn default_algorithm_status() -> Option<String> {
+    Some("approved".to_string())
+}
+
+/// Request to search algorithms across all papers
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchAlgorithmsRequest {
+    /// Keyword to search in algorithm name and description
+    #[serde(default)]
+    pub query: Option<String>,
+    /// Filter by status: "pending", "approved", "rejected" (default: "approved")
+    #[serde(default = "default_algorithm_status")]
+    pub status: Option<String>,
+    /// Filter by paper ID (omit to search across all papers)
+    #[serde(default)]
+    pub paper_id: Option<String>,
+    /// Filter by tags (algorithms must have ALL specified tags)
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    /// Number of results to return (default: 20)
+    #[serde(default = "default_algorithms_limit")]
+    pub limit: usize,
+    /// Pagination offset (default: 0)
+    #[serde(default)]
+    pub offset: usize,
+}
+
+/// A single algorithm result with paper context
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AlgorithmResult {
+    /// Unique algorithm ID
+    pub id: String,
+    /// Paper this algorithm was extracted from
+    pub paper_id: String,
+    /// Title of the source paper
+    pub paper_title: String,
+    /// Algorithm name
+    pub name: String,
+    /// Algorithm description
+    pub description: Option<String>,
+    /// Ordered steps
+    pub steps: Vec<serde_json::Value>,
+    /// Algorithm inputs
+    pub inputs: Vec<serde_json::Value>,
+    /// Algorithm outputs
+    pub outputs: Vec<serde_json::Value>,
+    /// Required preconditions
+    pub preconditions: Vec<String>,
+    /// Time/space complexity
+    pub complexity: Option<String>,
+    /// LaTeX notation
+    pub mathematical_notation: Option<String>,
+    /// Pseudocode
+    pub pseudocode: Option<String>,
+    /// Tags
+    pub tags: Vec<String>,
+    /// Confidence level
+    pub confidence: String,
+    /// Review status
+    pub status: String,
+    /// Creation timestamp
+    pub created_at: String,
+}
+
+/// Response from search_algorithms
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchAlgorithmsResponse {
+    /// Matching algorithms
+    pub algorithms: Vec<AlgorithmResult>,
+    /// Total matching algorithms (before pagination)
+    pub total: usize,
+    /// Limit used
+    pub limit: usize,
+    /// Offset used
+    pub offset: usize,
+    /// Time taken in milliseconds
+    pub duration_ms: u64,
+}
+
 /// Metadata stored with each chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {

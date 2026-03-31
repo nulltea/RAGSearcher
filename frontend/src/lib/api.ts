@@ -1,5 +1,5 @@
 /**
- * API client for RAGsearcher backend.
+ * API client for RAGSearcher backend.
  */
 
 import type {

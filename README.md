@@ -1,6 +1,14 @@
-# Project RAG - Paper Library with Semantic Search
+# RAGSearcher — Paper Library with Semantic Search
 
-Upload PDFs, extract text, generate embeddings, and search papers semantically. Runs as an MCP server, and Tauri desktop app.
+- **Desktop app** (Tauri) for managing a research paper library — upload PDFs, extract patterns and algorithms, search semantically.
+- **MCP server** that gives your coding agent token-efficient access to paper content and algorithm definitions via RAG. Hybrid search (FastEmbed vectors + BM25 keywords) over LanceDB.
+
+
+## Acknowledgments
+
+This project is based on two separate projects:
+- Local indexing with FastEmbed + LanceDB, semantic searches with hybrid vector + BM25. https://github.com/Brainwires/project-rag
+- Parts of frontend and claim/evidence/context extraction pipeline. https://github.com/aakashsharan/research-vault
 
 ## How It Works
 
@@ -22,10 +30,11 @@ No API keys needed for core functionality. All embedding runs locally.
 ### Install
 
 ```bash
-cargo install --git https://github.com/nulltead/RAGsearcher.git --bin rag-searcher
+git clone https://github.com/nulltead/RAGSearcher.git && cd RAGSearcher
+cargo install --path crates/core
 ```
 
-This installs the `rag-searcher` binary to `~/.cargo/bin/`.
+This builds and installs the `rag-searcher` binary to `~/.cargo/bin/`.
 
 ### Add to Claude Code
 
@@ -65,8 +74,9 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 |------|-------------|
 | `search` | Semantic search across paper content |
 | `search_papers` | Search papers by title, authors, status, type |
+| `search_algorithms` | Search algorithms across papers by keyword, tags, status |
 
-Slash commands: `/rag-searcher:search`, `/rag-searcher:papers`
+Slash commands: `/rag-searcher:search`, `/rag-searcher:papers`, `/rag-searcher:algorithms`
 
 ### Usage Examples
 
@@ -110,7 +120,7 @@ cargo tauri build --bundles app
 ### Install (macOS)
 
 ```bash
-cp -r ./target/release/bundle/macos/RAGsearcher.app /Applications/
+cp -r ./target/release/bundle/macos/RAGSearcher.app /Applications/
 ```
 
 Launch from Applications or Spotlight.
@@ -121,7 +131,7 @@ Copy `config.example.toml` to your platform config directory:
 
 | Platform | Path |
 |----------|------|
-| macOS | `~/Library/Application Support/RAGsearcher/config.toml` |
+| macOS | `~/Library/Application Support/RAGSearcher/config.toml` |
 | Linux | `~/.config/project-rag/config.toml` |
 | Windows | `%APPDATA%\project-rag\config.toml` |
 

@@ -152,6 +152,59 @@ impl RagMcpServer {
 
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
+
+    #[tool(description = "Search algorithms across all papers by keyword, status, tags, or paper. Returns structured algorithm data including steps, I/O, and pseudocode.")]
+    async fn search_algorithms(
+        &self,
+        Parameters(req): Parameters<SearchAlgorithmsRequest>,
+    ) -> Result<String, String> {
+        let start = std::time::Instant::now();
+
+        let (algorithms, total) = self
+            .metadata
+            .search_algorithms(
+                req.query.as_deref(),
+                req.status.as_deref(),
+                req.paper_id.as_deref(),
+                req.tags.as_deref(),
+                req.limit,
+                req.offset,
+            )
+            .await
+            .map_err(|e| format!("{:#}", e))?;
+
+        let results: Vec<AlgorithmResult> = algorithms
+            .into_iter()
+            .map(|(alg, paper_title)| AlgorithmResult {
+                id: alg.id,
+                paper_id: alg.paper_id,
+                paper_title,
+                name: alg.name,
+                description: alg.description,
+                steps: alg.steps.into_iter().map(|s| serde_json::to_value(s).unwrap_or_default()).collect(),
+                inputs: alg.inputs.into_iter().map(|i| serde_json::to_value(i).unwrap_or_default()).collect(),
+                outputs: alg.outputs.into_iter().map(|o| serde_json::to_value(o).unwrap_or_default()).collect(),
+                preconditions: alg.preconditions,
+                complexity: alg.complexity,
+                mathematical_notation: alg.mathematical_notation,
+                pseudocode: alg.pseudocode,
+                tags: alg.tags,
+                confidence: alg.confidence,
+                status: alg.status.to_string(),
+                created_at: alg.created_at,
+            })
+            .collect();
+
+        let response = SearchAlgorithmsResponse {
+            total,
+            limit: req.limit,
+            offset: req.offset,
+            duration_ms: start.elapsed().as_millis() as u64,
+            algorithms: results,
+        };
+
+        serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
+    }
 }
 
 // Prompts for slash commands
@@ -192,6 +245,26 @@ impl RagMcpServer {
             },
         )])
     }
+
+    #[prompt(
+        name = "algorithms",
+        description = "Search algorithms extracted from papers by keyword, tags, or paper"
+    )]
+    async fn algorithms_prompt(
+        &self,
+        Parameters(args): Parameters<serde_json::Value>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            if query.is_empty() {
+                "Please list approved algorithms from the paper library.".to_string()
+            } else {
+                format!("Please search for algorithms matching: {}", query)
+            },
+        )])
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -206,7 +279,7 @@ impl ServerHandler for RagMcpServer {
                 .build(),
             server_info: Implementation {
                 name: "rag-searcher".into(),
-                title: Some("Project RAG - Paper Library with Semantic Search".into()),
+                title: Some("RAGSearcher - Paper Library with Semantic Search".into()),
                 version: env!("CARGO_PKG_VERSION").into(),
                 icons: None,
                 website_url: None,
@@ -214,7 +287,8 @@ impl ServerHandler for RagMcpServer {
             instructions: Some(
                 "RAG-based paper library with semantic search. \
                 Use search to search paper content semantically, \
-                search_papers to find papers by title/authors/status."
+                search_papers to find papers by title/authors/status, \
+                search_algorithms to find algorithms across papers by keyword/tags."
                     .into(),
             ),
         }

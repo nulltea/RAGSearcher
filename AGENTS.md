@@ -1,6 +1,6 @@
-# AGENTS.md
+# CLAUDE.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 **Key Technology Stack:**
 - Rust 2024 edition with async/await (Tokio)
@@ -8,9 +8,9 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 - FastEmbed (all-MiniLM-L6-v2 model, 384 dimensions)
 - LanceDB vector database (default, embedded) or Qdrant (optional, external server)
 - Tantivy BM25 keyword search with Reciprocal Rank Fusion (RRF) for hybrid search
-- Tree-sitter AST-based chunking for 12 languages
-- Persistent hash cache for incremental updates across restarts
-- File walking with .gitignore support via `ignore` crate
+- PDF extraction and text chunking for paper processing
+- Pattern and algorithm extraction via Claude CLI
+- Tauri 2 desktop app with Next.js frontend
 
 ## Essential Commands
 
@@ -27,19 +27,22 @@ cargo check
 
 # Run the MCP server over stdio
 cargo run
-# Or directly:
-./target/release/project-rag
+
+# Run the web server for paper management
+cargo run -- web --port 3001
+
+# Run the Tauri desktop app
+cd crates/tauri-app && cargo tauri dev
 ```
 
 ### Testing
 ```bash
-# Run all unit tests (386 tests across all modules)
+# Run all unit tests
 cargo test --lib
 
 # Run tests for specific module
 cargo test --lib types::tests
 cargo test --lib chunker::tests
-cargo test --lib cache::tests
 cargo test --lib bm25_search::tests
 
 # Run with verbose output
@@ -70,52 +73,44 @@ RUST_LOG=debug cargo run
 RUST_LOG=trace cargo run
 ```
 
-### Vector Database Management
-
-**Default (LanceDB - Embedded)**
-```bash
-# No external setup required - LanceDB is embedded
-# Data stored in ./.lancedb directory by default
-```
-
 ## Architecture
+
+### Project Structure
+- `crates/core` — Library + CLI binary (MCP server, web server, embedding, search)
+- `crates/tauri-app` — Tauri 2 desktop app wrapper
+- `frontend/` — Next.js static export (paper library UI)
 
 ### Core Design Principles
 
-1. **Modular Trait-Based Design**: Each major component is defined by a trait (EmbeddingProvider, VectorDatabase) with concrete implementations, enabling easy swapping of backends.
+1. **Papers-Only Focus**: This project is a paper library with semantic search. It supports uploading PDFs, extracting text, chunking, embedding, and searching papers.
 
-2. **MCP Protocol Integration**: Uses `rmcp` macros (`#[tool]`, `#[prompt]`, `#[tool_router]`, `#[prompt_router]`) to define 9 MCP tools and 9 slash commands. The server communicates over stdio following MCP spec.
+2. **Modular Trait-Based Design**: Each major component is defined by a trait (EmbeddingProvider, VectorDatabase) with concrete implementations, enabling easy swapping of backends.
 
-3. **Async-First Architecture**: Built on Tokio runtime with async traits. File walking runs on blocking threads via `tokio::task::spawn_blocking` to avoid blocking the async runtime.
+3. **MCP Protocol Integration**: Uses `rmcp` macros (`#[tool]`, `#[prompt]`, `#[tool_router]`, `#[prompt_router]`) to define 4 MCP tools and 4 prompts. The server communicates over stdio following MCP spec.
 
-4. **Smart Indexing with Auto-Detection**: The `index_codebase` tool automatically detects whether to perform full indexing (new codebase) or incremental updates (previously indexed). Tracks file hashes (SHA256) in persistent cache (`.cache/project-rag/hash_cache.json`) to detect changes across server restarts.
+4. **Hybrid Search**: Combines vector similarity (semantic understanding) with BM25 keyword matching using Reciprocal Rank Fusion (RRF) for optimal search results. Tantivy provides full-text search capabilities with IDF scoring.
 
-5. **Hybrid Search**: Combines vector similarity (semantic understanding) with BM25 keyword matching using Reciprocal Rank Fusion (RRF) for optimal search results. Tantivy provides full-text search capabilities with IDF scoring.
+5. **Web Server**: Axum HTTP server for paper upload, search, pattern extraction, and algorithm extraction. Used by both the Tauri desktop app and standalone deployment.
 
 ### Critical Implementation Details
 
 **1. MCP Server Pattern (mcp_server.rs)**
 - Uses `#[tool_router]` and `#[prompt_router]` macros to generate routers
+- Tools: `search`, `search_papers`, `search_algorithms`, `get_statistics`
+- Prompts: `search`, `papers`, `algorithms`
 - Tools return `Result<String, String>` (JSON-serialized responses)
-- Prompts return `Vec<PromptMessage>` for slash command expansion
 - Server implements `ServerHandler` trait with `#[tool_handler]` and `#[prompt_handler]`
 
-**2. Smart Indexing and Incremental Updates**
-- Deprecated: Legacy `incremental_update` tool (removed in favor of smart indexing)
-- `index_codebase` now auto-detects: full indexing for new codebases, incremental for previously indexed
-- Persistent hash cache stored in `.cache/project-rag/hash_cache.json`
-- Normalizes paths to canonical absolute form for consistent cache lookups
-- Skips `.git` directories automatically to avoid indexing repository metadata
-- Detects: new files (no old hash), modified files (hash changed), deleted files (in cache but not on disk)
-- Deletes old embeddings before re-indexing modified files
-- Updates cache after successful indexing and persists to disk
+**2. Paper Upload Pipeline (web/handlers/papers.rs)**
+- PDF upload → text extraction → chunking → embedding → vector storage
+- Metadata stored in SQLite via `MetadataStore`
+- Pattern and algorithm extraction via Claude CLI (3-pass pipeline)
 
 **3. Hybrid Search (bm25_search.rs)**
 - Combines vector similarity with BM25 keyword matching
 - Uses Tantivy inverted index for full-text search with IDF scoring
 - Reciprocal Rank Fusion (RRF) merges both rankings using 1/(k+rank) formula (k=60)
 - Both indexes queried in parallel for fast results
-- Returns combined scores from both semantic and keyword matching
 
 ## Development Guidelines
 
@@ -132,14 +127,11 @@ RUST_LOG=trace cargo run
 - Add unit tests for all new functionality
 - Tests in same file using `#[cfg(test)]` module
 - Test serialization/deserialization for all request/response types
-- Mock file system for file walker tests (use `create_test_file_info`)
-- Current test coverage: 386 tests across 12 modules (types, chunker, cache, BM25, embedding, AST parser, file walker, relations types, symbol extractor, reference finder)
 
 ### Async Patterns
 - Use `tokio::spawn_blocking` for CPU-intensive or blocking I/O operations
 - Prefer `Arc<T>` over `Arc<RwLock<T>>` when possible (immutable shared state)
-- Use `Arc<RwLock<T>>` for mutable shared state (e.g., indexed_roots cache)
-- Batch operations to reduce async overhead (32 chunks per embedding batch)
+- Batch operations to reduce async overhead (8 chunks per embedding batch)
 
 ### MCP Tool Development
 When adding new tools:
@@ -148,4 +140,3 @@ When adding new tools:
 3. Add corresponding prompt in `#[prompt_router]` impl block with `#[prompt]` attribute
 4. Return `Result<String, String>` from tools (serialize response to JSON)
 5. Return `Vec<PromptMessage>` from prompts (user messages for slash commands)
-6. Update server count in comments (e.g., "6 tools" instead of "5 tools")

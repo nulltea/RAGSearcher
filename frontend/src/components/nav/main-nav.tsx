@@ -52,7 +52,7 @@ export function MainNav() {
         {/* Logo */}
         <Link href="/library" className="flex items-center gap-2">
           <BookOpen className="h-6 w-6 text-primary" />
-          <span className="font-semibold">RAGsearcher</span>
+          <span className="font-semibold">RAGSearcher</span>
         </Link>
 
         {/* Nav links */}

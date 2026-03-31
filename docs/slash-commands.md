@@ -34,3 +34,20 @@ Search papers by title, authors, status, or type. Returns paper metadata.
 | `offset` | int | 0 | Pagination offset |
 
 **Returns:** Papers with id, title, authors, source, status, chunk count, file path, creation date.
+
+## `/rag-searcher:algorithms`
+
+Search algorithms extracted from papers by keyword, status, tags, or paper.
+
+**Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `query` | string | — | Keyword search in algorithm name/description |
+| `status` | string | `approved` | Filter: `pending`, `approved`, `rejected` |
+| `paper_id` | string | — | Scope to a specific paper |
+| `tags` | string[] | — | Filter by tags (must match all) |
+| `limit` | int | 20 | Max results |
+| `offset` | int | 0 | Pagination offset |
+
+**Returns:** Algorithms with id, paper_id, paper_title, name, description, steps, inputs, outputs, preconditions, complexity, mathematical_notation, pseudocode, tags, confidence, status.

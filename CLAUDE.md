@@ -96,8 +96,8 @@ RUST_LOG=trace cargo run
 
 **1. MCP Server Pattern (mcp_server.rs)**
 - Uses `#[tool_router]` and `#[prompt_router]` macros to generate routers
-- Tools: `search`, `search_papers`, `get_statistics`
-- Prompts: `search`, `papers`
+- Tools: `search`, `search_papers`, `search_algorithms`, `get_statistics`
+- Prompts: `search`, `papers`, `algorithms`
 - Tools return `Result<String, String>` (JSON-serialized responses)
 - Server implements `ServerHandler` trait with `#[tool_handler]` and `#[prompt_handler]`
 

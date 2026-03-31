@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for the RAGsearcher desktop app",
+  "description": "Default capabilities for the RAGSearcher desktop app",
   "windows": ["main"],
   "permissions": [
     "core:default",

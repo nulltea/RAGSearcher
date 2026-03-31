@@ -36,13 +36,14 @@ async fn main() -> anyhow::Result<()> {
     println!();
 
     println!("Available MCP Tools:");
-    println!("  1. search         - Semantic search across paper content");
-    println!("  2. search_papers  - Search papers by title, authors, status");
-    println!("  3. get_statistics - Get index statistics");
+    println!("  1. search             - Semantic search across paper content");
+    println!("  2. search_papers      - Search papers by title, authors, status");
+    println!("  3. search_algorithms  - Search algorithms across papers by keyword/tags");
+    println!("  4. get_statistics     - Get index statistics");
     println!();
 
     println!("Available Slash Commands:");
-    println!("  /rag-searcher:search  /rag-searcher:papers");
+    println!("  /rag-searcher:search  /rag-searcher:papers  /rag-searcher:algorithms");
     println!();
 
     // Direct client usage
