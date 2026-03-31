@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Research Vault",
+  title: "RAGsearcher",
   description: "AI-powered research pattern extraction and synthesis",
 };
 

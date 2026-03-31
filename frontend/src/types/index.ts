@@ -1,5 +1,5 @@
 /**
- * TypeScript types matching project-rag Rust backend.
+ * TypeScript types matching ragsearcher Rust backend.
  */
 
 // ============================================================================

@@ -19,7 +19,8 @@
       "mcp__project-rag__search_papers",
       "Bash(cargo test:*)",
       "mcp__project-rag__query_codebase",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }
