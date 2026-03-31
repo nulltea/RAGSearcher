@@ -21,7 +21,7 @@
 //! - **Hybrid Search**: Combines vector similarity with BM25 keyword matching (RRF)
 //! - **Dual Database Support**: LanceDB (embedded, default) or Qdrant (external server)
 //! - **Paper Management**: Upload, extract, and search papers with metadata
-//! - **Pattern Extraction**: Extract key patterns and algorithms from papers via Gemini
+//! - **Pattern Extraction**: Extract key patterns and algorithms from papers via Claude CLI
 //! - **Dual API**: Use as a Rust library or as an MCP server for AI assistants
 
 /// BM25 keyword search using Tantivy for hybrid search
@@ -54,7 +54,7 @@ pub mod metadata;
 /// HTTP web server for paper upload and search
 pub mod web;
 
-/// Pattern extraction via Gemini CLI (3-pass pipeline)
+/// Pattern extraction via Claude CLI CLI (3-pass pipeline)
 pub mod extraction;
 
 // Library client API (core functionality)

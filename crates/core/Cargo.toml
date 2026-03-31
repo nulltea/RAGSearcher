@@ -77,6 +77,6 @@ name = "project_rag"
 path = "src/lib.rs"
 
 [[bin]]
-name = "project-rag"
+name = "rag-searcher"
 path = "src/main.rs"
 

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 /// Project-RAG: Paper library with semantic search
 #[derive(Parser)]
-#[command(name = "project-rag")]
+#[command(name = "rag-searcher")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Paper library with semantic search and MCP server", long_about = None)]
 struct Cli {
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
 
 /// Display comprehensive version and system information
 fn show_version_info() {
-    println!("project-rag v{}", env!("CARGO_PKG_VERSION"));
+    println!("rag-searcher v{}", env!("CARGO_PKG_VERSION"));
     println!();
 
     println!("System Information:");
@@ -145,7 +145,7 @@ fn show_version_info() {
     println!("Features:");
     println!("  Hybrid Search:   Enabled (Vector + BM25 keyword search)");
     println!("  Paper Library:   Upload, extract, and search papers");
-    println!("  Extraction:      Pattern and algorithm extraction via Gemini");
+    println!("  Extraction:      Pattern and algorithm extraction via Claude CLI");
 }
 
 /// Set up a global panic handler that logs panic information

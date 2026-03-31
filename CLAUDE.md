@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - LanceDB vector database (default, embedded) or Qdrant (optional, external server)
 - Tantivy BM25 keyword search with Reciprocal Rank Fusion (RRF) for hybrid search
 - PDF extraction and text chunking for paper processing
-- Pattern and algorithm extraction via Gemini CLI
+- Pattern and algorithm extraction via Claude CLI
 - Tauri 2 desktop app with Next.js frontend
 
 ## Essential Commands
@@ -96,15 +96,15 @@ RUST_LOG=trace cargo run
 
 **1. MCP Server Pattern (mcp_server.rs)**
 - Uses `#[tool_router]` and `#[prompt_router]` macros to generate routers
-- Tools: `query_rag`, `get_statistics`, `clear_index`, `search_papers`
-- Prompts: `query`, `stats`, `clear`, `papers`
+- Tools: `search`, `search_papers`, `get_statistics`
+- Prompts: `search`, `papers`
 - Tools return `Result<String, String>` (JSON-serialized responses)
 - Server implements `ServerHandler` trait with `#[tool_handler]` and `#[prompt_handler]`
 
 **2. Paper Upload Pipeline (web/handlers/papers.rs)**
 - PDF upload → text extraction → chunking → embedding → vector storage
 - Metadata stored in SQLite via `MetadataStore`
-- Pattern and algorithm extraction via Gemini CLI (3-pass pipeline)
+- Pattern and algorithm extraction via Claude CLI (3-pass pipeline)
 
 **3. Hybrid Search (bm25_search.rs)**
 - Combines vector similarity with BM25 keyword matching

@@ -78,7 +78,7 @@ impl RagMcpServer {
 #[tool_router(router = tool_router)]
 impl RagMcpServer {
     #[tool(description = "Search indexed papers using semantic search")]
-    async fn query_rag(
+    async fn search(
         &self,
         Parameters(req): Parameters<QueryRequest>,
     ) -> Result<String, String> {
@@ -101,20 +101,6 @@ impl RagMcpServer {
         let response = self
             .client
             .get_statistics()
-            .await
-            .map_err(|e| format!("{:#}", e))?;
-
-        serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
-    }
-
-    #[tool(description = "Clear all indexed data from the vector database")]
-    async fn clear_index(
-        &self,
-        Parameters(_req): Parameters<ClearRequest>,
-    ) -> Result<String, String> {
-        let response = self
-            .client
-            .clear_index()
             .await
             .map_err(|e| format!("{:#}", e))?;
 
@@ -172,10 +158,10 @@ impl RagMcpServer {
 #[prompt_router]
 impl RagMcpServer {
     #[prompt(
-        name = "query",
+        name = "search",
         description = "Search indexed papers using semantic search"
     )]
-    async fn query_prompt(
+    async fn search_prompt(
         &self,
         Parameters(args): Parameters<serde_json::Value>,
     ) -> Result<Vec<PromptMessage>, McpError> {
@@ -185,28 +171,6 @@ impl RagMcpServer {
             PromptMessageRole::User,
             format!("Please search the papers for: {}", query),
         )])
-    }
-
-    #[prompt(
-        name = "stats",
-        description = "Get statistics about the indexed content"
-    )]
-    async fn stats_prompt(&self) -> Vec<PromptMessage> {
-        vec![PromptMessage::new_text(
-            PromptMessageRole::User,
-            "Please get statistics about the indexed content.",
-        )]
-    }
-
-    #[prompt(
-        name = "clear",
-        description = "Clear all indexed data from the vector database"
-    )]
-    async fn clear_prompt(&self) -> Vec<PromptMessage> {
-        vec![PromptMessage::new_text(
-            PromptMessageRole::User,
-            "Please clear all indexed data from the vector database.",
-        )]
     }
 
     #[prompt(
@@ -241,7 +205,7 @@ impl ServerHandler for RagMcpServer {
                 .enable_prompts()
                 .build(),
             server_info: Implementation {
-                name: "project".into(),
+                name: "rag-searcher".into(),
                 title: Some("Project RAG - Paper Library with Semantic Search".into()),
                 version: env!("CARGO_PKG_VERSION").into(),
                 icons: None,
@@ -249,8 +213,8 @@ impl ServerHandler for RagMcpServer {
             },
             instructions: Some(
                 "RAG-based paper library with semantic search. \
-                Use query_rag to search paper content, search_papers for metadata search, \
-                get_statistics for index stats, and clear_index to reset."
+                Use search to search paper content semantically, \
+                search_papers to find papers by title/authors/status."
                     .into(),
             ),
         }

@@ -16,7 +16,7 @@ use crate::web::models::{
 };
 use crate::web::AppState;
 
-/// POST /api/papers/{id}/extract — trigger pattern extraction via Gemini CLI
+/// POST /api/papers/{id}/extract — trigger pattern extraction via Claude CLI
 pub async fn extract_patterns(
     State(state): State<Arc<AppState>>,
     Path(paper_id): Path<String>,
