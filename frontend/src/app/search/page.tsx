@@ -3,10 +3,10 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { searchDocuments } from "@/lib/api";
+import { getPaper, searchDocuments } from "@/lib/api";
 import type { SearchResponse, SearchResult } from "@/types";
 import { AlertCircle, Clock, FileCode, Loader2, Search } from "lucide-react";
-import { Suspense, useCallback, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 // ============================================================================
@@ -89,7 +89,16 @@ function SearchPageInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<SearchResponse | null>(null);
+  const [paperTitle, setPaperTitle] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (paperId) {
+      getPaper(paperId)
+        .then((p) => setPaperTitle(p.title))
+        .catch(() => setPaperTitle(null));
+    }
+  }, [paperId]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -129,7 +138,7 @@ function SearchPageInner() {
         <h1 className="text-2xl font-semibold text-foreground">Search</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {paperId
-            ? `Searching within paper ${paperId}`
+            ? `Searching within: ${paperTitle ?? paperId}`
             : "Semantic search across indexed documents"}
         </p>
       </div>

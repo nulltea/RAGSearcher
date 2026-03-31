@@ -522,6 +522,8 @@ pub struct PaperResult {
     pub status: String,
     /// Number of indexed chunks
     pub chunk_count: usize,
+    /// Absolute path to the stored paper file (if available)
+    pub file_path: Option<String>,
     /// Creation timestamp (RFC3339)
     pub created_at: String,
 }

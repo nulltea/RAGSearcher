@@ -15,7 +15,7 @@ pub use chunker::{ChunkStrategy, CodeChunker};
 pub use file_info::FileInfo;
 pub use file_walker::FileWalker;
 pub use language::detect_language;
-pub use pdf_extractor::extract_pdf_to_markdown;
+pub use pdf_extractor::{extract_pdf, extract_pdf_to_markdown, PdfExtraction};
 
 use crate::types::ChunkMetadata;
 

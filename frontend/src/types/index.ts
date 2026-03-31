@@ -32,6 +32,7 @@ export interface PaperResponse {
   paper_type: string;
   status: PaperStatus;
   original_filename: string | null;
+  file_path: string | null;
   chunk_count: number;
   pattern_count: number;
   algorithm_count: number;

@@ -8,7 +8,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 
 use crate::embedding::EmbeddingProvider;
-use crate::indexer::{FileInfo, extract_pdf_to_markdown};
+use crate::indexer::{FileInfo, extract_pdf};
 use crate::metadata::models::{PaperCreate, PaperListParams, PaperStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
@@ -25,6 +25,7 @@ pub async fn upload_paper(
 
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut text_content: Option<String> = None;
+    let mut url: Option<String> = None;
     let mut title: Option<String> = None;
     let mut authors: Vec<String> = Vec::new();
     let mut source: Option<String> = None;
@@ -42,7 +43,6 @@ pub async fn upload_paper(
         match name.as_str() {
             "file" => {
                 original_filename = field.file_name().map(|s| s.to_string());
-                // Read field in chunks to handle large files
                 let mut data = Vec::new();
                 while let Some(chunk) = field
                     .chunk()
@@ -59,6 +59,14 @@ pub async fn upload_paper(
                         .text()
                         .await
                         .map_err(|e| ApiError::BadRequest(format!("Failed to read text: {}", e)))?,
+                );
+            }
+            "url" => {
+                url = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| ApiError::BadRequest(format!("Failed to read URL: {}", e)))?,
                 );
             }
             "title" => {
@@ -102,9 +110,51 @@ pub async fn upload_paper(
         }
     }
 
+    // Download PDF from URL if provided
+    if let Some(ref pdf_url) = url {
+        if file_bytes.is_none() && text_content.is_none() {
+            let response = reqwest::get(pdf_url)
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("Failed to download URL: {}", e)))?;
+
+            if !response.status().is_success() {
+                return Err(ApiError::BadRequest(format!(
+                    "URL returned status {}",
+                    response.status()
+                )));
+            }
+
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| ApiError::Internal(format!("Failed to read response body: {}", e)))?
+                .to_vec();
+
+            // Derive filename from URL
+            let url_filename = pdf_url
+                .rsplit('/')
+                .next()
+                .unwrap_or("download.pdf")
+                .split('?')
+                .next()
+                .unwrap_or("download.pdf");
+            original_filename = Some(url_filename.to_string());
+
+            // Use URL as source if not explicitly provided
+            if source.is_none() {
+                source = Some(pdf_url.clone());
+            }
+
+            file_bytes = Some(bytes);
+        }
+    }
+
     // Extract text content from file or use provided text
+    let mut stored_file_path: Option<String> = None;
+    let mut pdf_title: Option<String> = None;
+
     let content = if let Some(bytes) = file_bytes {
-        // Save PDF to disk
+        // Save file to disk
         let ext = original_filename
             .as_deref()
             .and_then(|f| f.rsplit('.').next())
@@ -114,14 +164,17 @@ pub async fn upload_paper(
             .await
             .map_err(|e| ApiError::Internal(format!("Failed to save file: {}", e)))?;
 
+        stored_file_path = file_path.canonicalize().ok().map(|p| p.to_string_lossy().to_string());
+
         if ext.eq_ignore_ascii_case("pdf") {
             let path = file_path.clone();
-            tokio::task::spawn_blocking(move || extract_pdf_to_markdown(&path))
+            let extraction = tokio::task::spawn_blocking(move || extract_pdf(&path))
                 .await
                 .map_err(|e| ApiError::Internal(format!("Task join error: {}", e)))?
-                .map_err(|e| ApiError::Internal(format!("PDF extraction failed: {:#}", e)))?
+                .map_err(|e| ApiError::Internal(format!("PDF extraction failed: {:#}", e)))?;
+            pdf_title = extraction.title;
+            extraction.text
         } else {
-            // Plain text file
             String::from_utf8(bytes)
                 .map_err(|_| ApiError::BadRequest("File is not valid UTF-8 text".to_string()))?
         }
@@ -129,15 +182,16 @@ pub async fn upload_paper(
         text
     } else {
         return Err(ApiError::BadRequest(
-            "Either 'file' or 'text' field is required".to_string(),
+            "Either 'file', 'text', or 'url' field is required".to_string(),
         ));
     };
 
-    let title = title.unwrap_or_else(|| {
+    // Title priority: user-provided > PDF metadata/heuristic > filename without extension > "Untitled Paper"
+    let title = title.or(pdf_title).unwrap_or_else(|| {
         original_filename
             .as_deref()
-            .unwrap_or("Untitled Paper")
-            .to_string()
+            .map(|f| f.rsplit('.').nth(1).map(|s| s.to_string()).unwrap_or_else(|| f.to_string()))
+            .unwrap_or_else(|| "Untitled Paper".to_string())
     });
 
     // Create paper record
@@ -148,6 +202,7 @@ pub async fn upload_paper(
         published_date: published_date.clone(),
         paper_type: paper_type.clone(),
         original_filename: original_filename.clone(),
+        file_path: stored_file_path,
     };
 
     let paper = state

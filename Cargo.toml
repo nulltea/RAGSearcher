@@ -66,6 +66,9 @@ thiserror = "2.0"
 toml = "0.8"
 # PDF processing
 pdf-extract = "0.7"
+lopdf = "0.34"
+# HTTP client for URL downloads
+reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
 # Performance
 rayon = "1.10"
 # Async utilities for cancellation

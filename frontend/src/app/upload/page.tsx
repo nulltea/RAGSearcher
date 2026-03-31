@@ -3,7 +3,7 @@
 import { extractAlgorithms, extractPatterns, uploadPaper } from "@/lib/api";
 import type { PaperUploadResponse } from "@/types";
 import { useRouter } from "next/navigation";
-import { AlertCircle, FileText, Loader2, Type } from "lucide-react";
+import { AlertCircle, FileText, Link2, Loader2, Type } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
   type MetadataFormData,
 } from "@/components/upload";
 
-type InputMode = "file" | "text";
+type InputMode = "file" | "text" | "url";
 
 const INITIAL_METADATA: MetadataFormData = {
   title: "",
@@ -32,6 +32,7 @@ export default function UploadPage() {
   const [inputMode, setInputMode] = useState<InputMode>("file");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [textContent, setTextContent] = useState("");
+  const [urlContent, setUrlContent] = useState("");
   const [metadata, setMetadata] = useState<MetadataFormData>(INITIAL_METADATA);
 
   // Upload state
@@ -50,7 +51,11 @@ export default function UploadPage() {
   const [algorithmsExtracted, setAlgorithmsExtracted] = useState(false);
 
   const hasContent =
-    inputMode === "file" ? selectedFile !== null : textContent.trim().length > 0;
+    inputMode === "file"
+      ? selectedFile !== null
+      : inputMode === "text"
+      ? textContent.trim().length > 0
+      : urlContent.trim().length > 0;
 
   const handleUpload = useCallback(async () => {
     if (!hasContent) return;
@@ -66,6 +71,8 @@ export default function UploadPage() {
         formData.append("file", selectedFile);
       } else if (inputMode === "text") {
         formData.append("text", textContent);
+      } else if (inputMode === "url") {
+        formData.append("url", urlContent.trim());
       }
 
       // Add metadata (only non-empty values)
@@ -94,11 +101,12 @@ export default function UploadPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [hasContent, inputMode, selectedFile, textContent, metadata]);
+  }, [hasContent, inputMode, selectedFile, textContent, urlContent, metadata]);
 
   const handleUploadAnother = useCallback(() => {
     setSelectedFile(null);
     setTextContent("");
+    setUrlContent("");
     setMetadata(INITIAL_METADATA);
     setResult(null);
     setError(null);
@@ -312,6 +320,18 @@ export default function UploadPage() {
             <Type className="h-4 w-4" />
             Text Input
           </button>
+          <button
+            type="button"
+            onClick={() => setInputMode("url")}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              inputMode === "url"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Link2 className="h-4 w-4" />
+            URL
+          </button>
         </div>
 
         {/* Content Input */}
@@ -322,12 +342,29 @@ export default function UploadPage() {
             onFileRemove={() => setSelectedFile(null)}
             disabled={isUploading}
           />
-        ) : (
+        ) : inputMode === "text" ? (
           <TextInput
             value={textContent}
             onChange={setTextContent}
             disabled={isUploading}
           />
+        ) : (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              PDF URL
+            </label>
+            <input
+              type="url"
+              value={urlContent}
+              onChange={(e) => setUrlContent(e.target.value)}
+              placeholder="https://example.com/paper.pdf"
+              disabled={isUploading}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            />
+            <p className="text-xs text-muted-foreground">
+              Direct link to a PDF file. The file will be downloaded and processed.
+            </p>
+          </div>
         )}
 
         {/* Metadata Form */}

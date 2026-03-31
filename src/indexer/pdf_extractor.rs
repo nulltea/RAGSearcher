@@ -1,15 +1,120 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-/// Extract text from a PDF file and convert to Markdown format
+/// Result of PDF extraction: markdown text and optional extracted title
+pub struct PdfExtraction {
+    pub text: String,
+    pub title: Option<String>,
+}
+
+/// Extract text from a PDF file and convert to Markdown format.
+/// Also attempts to extract the paper title from PDF metadata or content heuristic.
 pub fn extract_pdf_to_markdown(path: &Path) -> Result<String> {
-    // Extract text from PDF using pdf-extract
+    let extraction = extract_pdf(path)?;
+    Ok(extraction.text)
+}
+
+/// Extract text and title from a PDF file.
+pub fn extract_pdf(path: &Path) -> Result<PdfExtraction> {
     let text = pdf_extract::extract_text(path).context("Failed to extract text from PDF")?;
-
-    // Convert to markdown format
     let markdown = format_as_markdown(&text);
+    let title = extract_pdf_title(path, &text);
+    Ok(PdfExtraction {
+        text: markdown,
+        title,
+    })
+}
 
-    Ok(markdown)
+/// Try to extract the paper title without AI.
+/// Priority: PDF metadata /Title field → first-line heuristic from text.
+fn extract_pdf_title(path: &Path, text: &str) -> Option<String> {
+    // Try PDF metadata first
+    if let Some(title) = extract_title_from_metadata(path) {
+        return Some(title);
+    }
+
+    // Fall back to text heuristic
+    extract_title_from_text(text)
+}
+
+/// Read the /Title field from the PDF's document info dictionary.
+fn extract_title_from_metadata(path: &Path) -> Option<String> {
+    let doc = lopdf::Document::load(path).ok()?;
+
+    // Try the Info dictionary in the trailer
+    let info_ref = doc.trailer.get(b"Info").ok()?;
+    let info_ref = info_ref.as_reference().ok()?;
+    let info = doc.get_dictionary(info_ref).ok()?;
+
+    let title_obj = info.get(b"Title").ok()?;
+    let title = match title_obj {
+        lopdf::Object::String(bytes, _) => String::from_utf8_lossy(bytes).to_string(),
+        _ => return None,
+    };
+
+    let trimmed = title.trim().to_string();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("untitled") {
+        return None;
+    }
+
+    Some(trimmed)
+}
+
+/// Heuristic: the title is typically the first non-empty line(s) of the paper text,
+/// before any all-caps heading, author line, or large blank gap.
+fn extract_title_from_text(text: &str) -> Option<String> {
+    let mut title_lines: Vec<&str> = Vec::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+
+        // Skip empty lines at the start
+        if trimmed.is_empty() {
+            if title_lines.is_empty() {
+                continue;
+            }
+            // First blank line after title content — stop
+            break;
+        }
+
+        // Stop if we hit a likely heading (all caps section like ABSTRACT, INTRODUCTION)
+        if is_likely_heading(trimmed) && !title_lines.is_empty() {
+            break;
+        }
+
+        // Stop if we hit author-like content (contains @, "university", "department", etc.)
+        let lower = trimmed.to_lowercase();
+        if !title_lines.is_empty()
+            && (lower.contains('@')
+                || lower.contains("university")
+                || lower.contains("department")
+                || lower.contains("institute")
+                || lower.contains("abstract"))
+        {
+            break;
+        }
+
+        title_lines.push(trimmed);
+
+        // Cap at 2 lines (titles are rarely longer)
+        if title_lines.len() >= 2 {
+            break;
+        }
+    }
+
+    let title = title_lines.join(" ");
+    let title = title.trim();
+
+    if title.is_empty() || title.len() < 3 {
+        return None;
+    }
+
+    // Cap at 200 chars
+    if title.len() > 200 {
+        return Some(title[..200].trim().to_string());
+    }
+
+    Some(title.to_string())
 }
 
 /// Format extracted PDF text as Markdown

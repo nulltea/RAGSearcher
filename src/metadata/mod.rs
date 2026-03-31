@@ -32,6 +32,7 @@ impl MetadataStore {
                 paper_type TEXT NOT NULL DEFAULT 'research_paper',
                 status TEXT NOT NULL DEFAULT 'processing',
                 original_filename TEXT,
+                file_path TEXT,
                 chunk_count INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -71,6 +72,11 @@ impl MetadataStore {
         )
         .context("Failed to create tables")?;
 
+        // Migrations for existing databases
+        let _ = conn.execute_batch(
+            "ALTER TABLE papers ADD COLUMN file_path TEXT;",
+        );
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -87,8 +93,8 @@ impl MetadataStore {
             let authors_json = serde_json::to_string(&create.authors)?;
 
             conn.execute(
-                "INSERT INTO papers (id, title, authors, source, published_date, paper_type, status, original_filename, chunk_count, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10)",
+                "INSERT INTO papers (id, title, authors, source, published_date, paper_type, status, original_filename, file_path, chunk_count, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10, ?11)",
                 rusqlite::params![
                     id,
                     create.title,
@@ -98,6 +104,7 @@ impl MetadataStore {
                     create.paper_type,
                     PaperStatus::Processing.to_string(),
                     create.original_filename,
+                    create.file_path,
                     now,
                     now,
                 ],
@@ -112,6 +119,7 @@ impl MetadataStore {
                 paper_type: create.paper_type,
                 status: PaperStatus::Processing,
                 original_filename: create.original_filename,
+                file_path: create.file_path,
                 chunk_count: 0,
                 pattern_count: 0,
                 algorithm_count: 0,
@@ -129,7 +137,7 @@ impl MetadataStore {
         tokio::task::spawn_blocking(move || {
             let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let mut stmt = conn.prepare(
-                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.chunk_count, p.created_at, p.updated_at,
+                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.file_path, p.chunk_count, p.created_at, p.updated_at,
                  (SELECT COUNT(*) FROM patterns WHERE paper_id = p.id) as pattern_count,
                  (SELECT COUNT(*) FROM algorithms WHERE paper_id = p.id) as algorithm_count
                  FROM papers p WHERE p.id = ?1",
@@ -149,11 +157,12 @@ impl MetadataStore {
                     paper_type: row.get(5)?,
                     status: PaperStatus::from_str(&status_str),
                     original_filename: row.get(7)?,
-                    chunk_count: row.get::<_, i64>(8)? as usize,
-                    pattern_count: row.get::<_, i64>(11)? as usize,
-                    algorithm_count: row.get::<_, i64>(12)? as usize,
-                    created_at: row.get(9)?,
-                    updated_at: row.get(10)?,
+                    file_path: row.get(8)?,
+                    chunk_count: row.get::<_, i64>(9)? as usize,
+                    pattern_count: row.get::<_, i64>(12)? as usize,
+                    algorithm_count: row.get::<_, i64>(13)? as usize,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
                 })
             }).optional()?;
 
@@ -198,7 +207,7 @@ impl MetadataStore {
 
             // Get paginated results
             let query_sql = format!(
-                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.chunk_count, p.created_at, p.updated_at,
+                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.file_path, p.chunk_count, p.created_at, p.updated_at,
                  (SELECT COUNT(*) FROM patterns WHERE paper_id = p.id) as pattern_count,
                  (SELECT COUNT(*) FROM algorithms WHERE paper_id = p.id) as algorithm_count
                  FROM papers p {} ORDER BY p.created_at DESC LIMIT ?{} OFFSET ?{}",
@@ -227,11 +236,12 @@ impl MetadataStore {
                         paper_type: row.get(5)?,
                         status: PaperStatus::from_str(&status_str),
                         original_filename: row.get(7)?,
-                        chunk_count: row.get::<_, i64>(8)? as usize,
-                        pattern_count: row.get::<_, i64>(11)? as usize,
-                        algorithm_count: row.get::<_, i64>(12)? as usize,
-                        created_at: row.get(9)?,
-                        updated_at: row.get(10)?,
+                        file_path: row.get(8)?,
+                        chunk_count: row.get::<_, i64>(9)? as usize,
+                        pattern_count: row.get::<_, i64>(12)? as usize,
+                        algorithm_count: row.get::<_, i64>(13)? as usize,
+                        created_at: row.get(10)?,
+                        updated_at: row.get(11)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -459,7 +469,7 @@ impl MetadataStore {
             };
 
             let query_sql = format!(
-                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.chunk_count, p.created_at, p.updated_at,
+                "SELECT p.id, p.title, p.authors, p.source, p.published_date, p.paper_type, p.status, p.original_filename, p.file_path, p.chunk_count, p.created_at, p.updated_at,
                  (SELECT COUNT(*) FROM patterns WHERE paper_id = p.id) as pattern_count,
                  (SELECT COUNT(*) FROM algorithms WHERE paper_id = p.id) as algorithm_count
                  FROM papers p {} ORDER BY p.created_at DESC LIMIT ?{} OFFSET ?{}",
@@ -487,11 +497,12 @@ impl MetadataStore {
                         paper_type: row.get(5)?,
                         status: PaperStatus::from_str(&status_str),
                         original_filename: row.get(7)?,
-                        chunk_count: row.get::<_, i64>(8)? as usize,
-                        pattern_count: row.get::<_, i64>(11)? as usize,
-                        algorithm_count: row.get::<_, i64>(12)? as usize,
-                        created_at: row.get(9)?,
-                        updated_at: row.get(10)?,
+                        file_path: row.get(8)?,
+                        chunk_count: row.get::<_, i64>(9)? as usize,
+                        pattern_count: row.get::<_, i64>(12)? as usize,
+                        algorithm_count: row.get::<_, i64>(13)? as usize,
+                        created_at: row.get(10)?,
+                        updated_at: row.get(11)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;

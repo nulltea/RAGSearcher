@@ -85,6 +85,7 @@ pub struct Paper {
     pub paper_type: String,
     pub status: PaperStatus,
     pub original_filename: Option<String>,
+    pub file_path: Option<String>,
     pub chunk_count: usize,
     pub pattern_count: usize,
     pub algorithm_count: usize,
@@ -102,6 +103,7 @@ pub struct PaperCreate {
     #[serde(default = "default_paper_type")]
     pub paper_type: String,
     pub original_filename: Option<String>,
+    pub file_path: Option<String>,
 }
 
 fn default_paper_type() -> String {

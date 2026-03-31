@@ -329,6 +329,7 @@ impl RagMcpServer {
                 paper_type: p.paper_type,
                 status: p.status.to_string(),
                 chunk_count: p.chunk_count,
+                file_path: p.file_path,
                 created_at: p.created_at,
             })
             .collect();
