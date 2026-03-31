@@ -6,9 +6,12 @@
 [![Crates.io](https://img.shields.io/crates/v/project-rag)](https://crates.io/crates/project-rag)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Rust-based Model Context Protocol (MCP) server that provides AI assistants with powerful RAG (Retrieval-Augmented Generation) capabilities for understanding massive codebases.
+A Rust-based Model Context Protocol (MCP) server that provides AI assistants with powerful RAG (Retrieval-Augmented Generation)
+[[TODO]]
 
 ## Overview
+
+[[TODO]]
 
 This MCP server enables AI assistants to efficiently search and understand large projects by:
 - Creating semantic embeddings of code files
@@ -22,17 +25,7 @@ This MCP server enables AI assistants to efficiently search and understand large
 - **Hybrid Search**: Combines vector similarity with BM25 keyword matching using Reciprocal Rank Fusion (RRF) for optimal results
 - **AST-Based Chunking**: Uses Tree-sitter to extract semantic units (functions, classes, methods) for 12 languages
 - **Comprehensive File Support**: Indexes 40+ file types including code, documentation (with PDF→Markdown conversion), and configuration files
-- **Git History Search**: Search commit history with smart on-demand indexing (default: 10 commits, only indexes deeper as needed)
-- **Multi-Project Support**: Index and query multiple codebases simultaneously with project filtering
-- **Smart Indexing**: Automatically performs full indexing for new codebases or incremental updates for previously indexed ones
-- **Cross-Process Locking**: Filesystem-based locks prevent multiple processes (e.g., multiple Claude Code sessions) from indexing the same codebase simultaneously
-- **Concurrent Access Protection**: Safe lock management prevents index corruption when multiple agents try to index simultaneously
-- **Stable Embedded Database**: LanceDB vector database (default, no external dependencies) with optional Qdrant support
-- **Language Detection**: Automatic detection of 40+ file types (programming languages, documentation formats, and config files)
-- **Advanced Filtering**: Search by file type, language, or path patterns
-- **Respects .gitignore**: Automatically excludes ignored files during indexing
-- **Code Navigation**: Find definitions, references, and call graphs (lightweight LSP-like features)
-- **Adaptive Search Thresholds**: Automatically lowers similarity threshold when no results found (0.7 → 0.6 → 0.5 → 0.4 → 0.3)
+- [[TODO]]
 - **Slash Commands**: 9 convenient slash commands via MCP Prompts
 
 ## MCP Slash Commands
@@ -49,83 +42,14 @@ The server provides 9 slash commands for quick access in Claude Code:
 8. **`/project:references`** - Find all references to a symbol
 9. **`/project:callgraph`** - Get call graph for a function (callers/callees)
 
-See [slash-commands.md](docs/slash-commands.md) for detailed usage.
-
-## Supported File Types
-
-Project RAG automatically indexes and searches **40+ file types** across three categories:
-
-### Programming Languages (24 languages)
-Supports AST-based semantic chunking for these languages:
-- **Rust** (`.rs`)
-- **Python** (`.py`)
-- **JavaScript** (`.js`, `.mjs`, `.cjs`), **TypeScript** (`.ts`), **JSX** (`.jsx`), **TSX** (`.tsx`)
-- **Go** (`.go`)
-- **Java** (`.java`)
-- **C** (`.c`), **C++** (`.cpp`, `.cc`, `.cxx`), **C/C++ Headers** (`.h`, `.hpp`)
-- **C#** (`.cs`)
-- **Swift** (`.swift`)
-- **Kotlin** (`.kt`, `.kts`)
-- **Scala** (`.scala`)
-- **Ruby** (`.rb`)
-- **PHP** (`.php`)
-- **Shell** (`.sh`, `.bash`)
-- **SQL** (`.sql`)
-- **HTML** (`.html`, `.htm`)
-- **CSS** (`.css`), **SCSS** (`.scss`, `.sass`)
-
-### Documentation Formats (8 formats)
-With special handling for rich content:
-- **Markdown** (`.md`, `.markdown`)
-- **PDF** (`.pdf`) - **Automatically converted to Markdown** with table preservation
-- **reStructuredText** (`.rst`)
-- **AsciiDoc** (`.adoc`, `.asciidoc`)
-- **Org Mode** (`.org`)
-- **Plain Text** (`.txt`)
-- **Log Files** (`.log`)
-
-**PDF Conversion Features:**
-- Extracts text content using `pdf-extract` library
-- Converts to Markdown format automatically
-- Preserves **table structures** (detects tab/space-separated columns)
-- Detects and formats **headings** (ALL CAPS lines and section markers)
-- Handles multi-column layouts intelligently
-- Chunks like any other text file (50 lines per chunk by default)
-
-### Configuration Files (8 formats)
-For complete project understanding:
-- **JSON** (`.json`)
-- **YAML** (`.yaml`, `.yml`)
-- **TOML** (`.toml`)
-- **XML** (`.xml`)
-- **INI** (`.ini`)
-- **Config files** (`.conf`, `.config`, `.cfg`)
-- **Properties** (`.properties`)
-- **Environment** (`.env`)
-
-### Example Use Cases
-```bash
-# Index documentation PDFs in your project
-query_codebase("API authentication flow")  # Finds content in .pdf, .md, .rst files
-
-# Search configuration files
-query_codebase("database connection string")  # Finds .yaml, .toml, .env, .conf files
-
-# Find code implementations
-search_by_filters(query="JWT validation", file_extensions=["rs", "go"])
-```
 
 ## MCP Tools
 
 The server provides 9 tools that can be used directly:
 
-1. **index_codebase** - Smartly index a codebase directory
-   - Automatically performs full indexing for new codebases
-   - Automatically performs incremental updates for previously indexed codebases
-   - Respects .gitignore and exclude patterns
-   - Returns mode information (full or incremental)
+[[TODO]]
 
-2. **query_codebase** - Hybrid semantic + keyword search across the indexed code
+2. **query** - Hybrid semantic + keyword search across the indexed code
    - Combines vector similarity with BM25 keyword matching (enabled by default)
    - Returns relevant code chunks with both vector and keyword scores
    - Configurable result limit and score threshold
@@ -175,7 +99,6 @@ The server provides 9 tools that can be used directly:
 ## Prerequisites
 
 - **Rust**: 1.88+ with Rust 2024 edition support
-- **protobuf-compiler**: Required for building (install via `sudo apt-get install protobuf-compiler` on Ubuntu/Debian)
 
 ### Vector Database Options
 
@@ -225,6 +148,8 @@ services:
 
 ## Installation
 
+[[TODO]]
+
 ```bash
 # Navigate to the project
 cd project-rag
@@ -242,6 +167,8 @@ cargo build --release --no-default-features --features qdrant-backend
 ```
 
 ## Usage
+
+[[TODO]]
 
 ### Running as MCP Server
 
@@ -289,337 +216,9 @@ Add to your Claude Desktop config:
 }
 ```
 
-**Note**: Claude Code and Claude Desktop are different products with different configuration methods.
-
-### Example Tool Usage
-
-**Index a codebase:**
-```json
-{
-  "path": "/path/to/your/project",
-  "include_patterns": ["**/*.rs", "**/*.toml"],
-  "exclude_patterns": ["**/target/**", "**/node_modules/**"],
-  "max_file_size": 1048576
-}
-```
-
-**Query the codebase:**
-```json
-{
-  "query": "How does authentication work?",
-  "limit": 10,
-  "min_score": 0.7
-}
-```
-
-**Advanced filtered search:**
-```json
-{
-  "query": "database connection pool",
-  "limit": 5,
-  "min_score": 0.75,
-  "file_extensions": ["rs"],
-  "languages": ["Rust"],
-  "path_patterns": ["src/db"]
-}
-```
-
-**Index (or re-index) a codebase:**
-```json
-{
-  "path": "/path/to/your/project",
-  "include_patterns": [],
-  "exclude_patterns": []
-}
-```
-*Note: This automatically performs a full index for new codebases or an incremental update for previously indexed ones.*
-
-**Find definition of a symbol:**
-```json
-{
-  "file_path": "/path/to/your/project/src/main.rs",
-  "line": 42,
-  "column": 10
-}
-```
-
-**Find all references to a symbol:**
-```json
-{
-  "file_path": "/path/to/your/project/src/lib.rs",
-  "line": 15,
-  "column": 8,
-  "include_definition": false
-}
-```
-
-**Get call graph for a function:**
-```json
-{
-  "file_path": "/path/to/your/project/src/api.rs",
-  "line": 100,
-  "column": 4,
-  "depth": 2
-}
-```
-
-## Architecture
-
-```
-project-rag/
-├── src/
-│   ├── bm25_search.rs      # Tantivy BM25 keyword search with RRF fusion
-│   ├── client/             # High-level client API
-│   │   ├── mod.rs          # RagClient - unified interface for all operations
-│   │   └── indexing/       # Indexing pipeline with progress reporting
-│   ├── embedding/          # FastEmbed integration for local embeddings
-│   │   ├── mod.rs          # EmbeddingProvider trait
-│   │   └── fastembed_manager.rs  # all-MiniLM-L6-v2 implementation
-│   ├── vector_db/          # Vector database implementations
-│   │   ├── mod.rs          # VectorDatabase trait
-│   │   ├── lance_client.rs # LanceDB + Tantivy hybrid search (default)
-│   │   └── qdrant_client.rs  # Qdrant implementation (optional)
-│   ├── indexer/            # File walking and code chunking
-│   │   ├── mod.rs          # Module exports
-│   │   ├── file_walker.rs  # Directory traversal with .gitignore + 40+ file types
-│   │   ├── chunker.rs      # Chunking strategies (AST-based, fixed-lines, sliding window)
-│   │   ├── ast_parser.rs   # Tree-sitter AST parsing for 12 languages
-│   │   └── pdf_extractor.rs # PDF to Markdown converter with table support
-│   ├── relations/          # Code relationship analysis (LSP-like features)
-│   │   ├── mod.rs          # RelationsProvider trait, HybridRelationsProvider
-│   │   ├── types.rs        # SymbolId, Definition, Reference, CallEdge types
-│   │   ├── repomap/        # AST-based symbol extraction (fallback provider)
-│   │   │   ├── mod.rs      # RepoMapProvider
-│   │   │   ├── symbol_extractor.rs  # Extract definitions from AST
-│   │   │   └── reference_finder.rs  # Find references via identifier matching
-│   │   ├── storage/        # Relations storage layer
-│   │   │   ├── mod.rs      # RelationsStore trait
-│   │   │   └── lance_store.rs  # LanceDB storage (placeholder)
-│   │   └── stack_graphs/   # Optional: High-precision name resolution
-│   │       └── mod.rs      # StackGraphsProvider (feature-gated)
-│   ├── mcp_server.rs       # MCP server with 9 tools
-│   ├── types/              # Request/Response types with JSON schema
-│   │   └── mod.rs          # All MCP request/response types
-│   ├── main.rs             # Binary entry point with stdio transport
-│   └── lib.rs              # Library root
-├── Cargo.toml              # Rust 2024 edition with dependencies
-├── README.md               # This file
-├── CONTRIBUTING.md         # Contributor guidelines
-├── TESTING.md              # Testing guide
-└── CLAUDE.md               # AI assistant instructions
-```
-
-## Configuration
-
-### Environment Variables
-- `RUST_LOG` - Set logging level (options: `error`, `warn`, `info`, `debug`, `trace`)
-  - Example: `RUST_LOG=debug cargo run`
-
-### Qdrant Configuration
-- Currently hardcoded to `http://localhost:6334`
-- Future: Add configuration file support
-
-### Embedding Model
-- Default: `all-MiniLM-L6-v2` (384 dimensions)
-- First run downloads model (~50MB) to cache
-
-### Chunking Strategy
-- **Default**: Hybrid AST-based with fallback to fixed-lines
-- **AST Parsing**: Extracts semantic units (functions, classes, methods) for Rust, Python, JavaScript, TypeScript, Go, Java, Swift, C, C++, C#, Ruby, PHP
-- **Fallback**: 50 lines per chunk for unsupported languages
-- **Alternative**: Sliding window with configurable overlap
-
-## Technical Details
-
-### Embeddings
-- **Model**: all-MiniLM-L6-v2 (Sentence Transformers)
-- **Dimensions**: 384
-- **Library**: fastembed-rs with ONNX runtime
-- **Performance**: ~500 embeddings/second
-
-### Vector Database
-- **Engine**: Qdrant
-- **Distance Metric**: Cosine similarity
-- **Index**: HNSW for fast approximate nearest neighbor search
-- **Payload**: Stores file path, project, line numbers, language, hash, timestamp, content
-
-### Hybrid Search
-- **Vector Similarity**: Semantic understanding via embeddings (LanceDB or Qdrant)
-- **Keyword Matching**: Full-text BM25 search via Tantivy inverted index
-- **Fusion Algorithm**: Reciprocal Rank Fusion (RRF) with k=60 constant
-- **BM25 Parameters**: Uses Tantivy's optimized BM25 implementation
-- **Ranking**: RRF combines both rankings using 1/(k+rank) formula
-- **Performance**: Both indexes queried in parallel for fast results
-
-### Adaptive Threshold Logic
-
-Both `query_codebase` and `search_by_filters` tools implement intelligent adaptive threshold lowering:
-
-**How it works:**
-1. Initial search uses the requested `min_score` threshold (default: 0.7)
-2. If no results found and threshold > 0.3, automatically retries with lower thresholds
-3. Fallback thresholds tried in order: 0.6 → 0.5 → 0.4 → 0.3
-4. Response includes `threshold_used` and `threshold_lowered` fields for transparency
-
-**Benefits:**
-- Prevents empty results when semantic similarity is lower than expected
-- Maintains search quality by preferring higher thresholds when possible
-- Transparent: you always know the actual threshold used
-
-**Example Response:**
-```json
-{
-  "results": [...],
-  "duration_ms": 45,
-  "threshold_used": 0.4,
-  "threshold_lowered": true
-}
-```
-
-### Lightweight LSP Features
-
-Project RAG provides code navigation capabilities similar to a Language Server Protocol (LSP) implementation, but optimized for semantic search use cases:
-
-**Find Definition** (`find_definition`):
-- Locate where symbols (functions, classes, variables) are defined
-- Uses hybrid approach: high-precision stack-graphs for Python, TypeScript, Java, Ruby
-- Falls back to AST-based RepoMap analysis for all other languages
-- Reports precision level (High, Medium, Low) in results
-
-**Find References** (`find_references`):
-- Find all locations where a symbol is used across the codebase
-- Categorizes reference types: Call, Read, Write, Import, TypeReference, Inheritance, Instantiation
-- Useful for understanding how code is connected
-- Option to include/exclude the definition site
-
-**Get Call Graph** (`get_call_graph`):
-- Analyze function call relationships
-- Shows both callers (what calls this function) and callees (what this function calls)
-- Configurable traversal depth for multi-level analysis
-- Great for impact analysis and understanding code flow
-
-**Architecture:**
-```
-RelationsProvider (trait)
-├── StackGraphsProvider (high precision: ~95%)
-│   └── Supports: Python, TypeScript, Java, Ruby
-└── RepoMapProvider (fallback: ~70% precision)
-    └── Supports: All tree-sitter languages (12+)
-```
-
-**When to Use:**
-- **Find Definition**: "Where is this function defined?"
-- **Find References**: "Where is this function called from?"
-- **Get Call Graph**: "What functions does this code depend on?"
-
-### Cross-Process Locking
-
-Project RAG uses a **two-layer locking system** to prevent multiple processes from indexing the same codebase simultaneously:
-
-**Layer 1: Filesystem Locks (Cross-Process)**
-- Uses `flock()` system call for OS-level exclusive locks
-- Lock files stored in `~/.local/share/project-rag/locks/` (or `brainwires/locks/`)
-- Automatically released when process exits (even on crash)
-- Prevents multiple Claude Code sessions from hammering CPU with duplicate indexing
-
-**Layer 2: In-Memory Locks (In-Process)**
-- Broadcast channels allow waiting tasks to receive results
-- Prevents duplicate work within the same process
-
-**How It Works:**
-```
-Process A (Claude Session 1)          Process B (Claude Session 2)
-─────────────────────────────          ─────────────────────────────
-index_codebase("/project")             index_codebase("/project")
-        │                                       │
-        ▼                                       ▼
-Acquire filesystem lock                Try filesystem lock
-        │                                       │
-        ▼                                       ▼
-     ACQUIRED                              BLOCKED (waits)
-        │                                       │
-        ▼                                       │
-Do full indexing...                             │
-        │                                       │
-        ▼                                       │
-Release lock ──────────────────────────────────►│
-                                                ▼
-                                         Lock acquired
-                                                │
-                                                ▼
-                                         Return (index is current)
-```
-
-**Benefits:**
-- No duplicate CPU work across multiple Claude Code sessions
-- No database corruption from concurrent writes
-- Automatic cleanup on process crash (OS releases flock)
-- Waiting process gets immediate response when indexing completes
-
-### BM25 Index Lock Safety
-
-The BM25 (Tantivy) index uses additional file-based locks to prevent concurrent writes:
-
-**Stale Lock Detection:**
-- Lock files are checked for staleness (>5 minutes old)
-- Uses file modification timestamps to detect crashed processes
-- Fresh locks (<5 minutes) are treated as active
-
-**Automatic Recovery:**
-- When indexing fails with a lock error, the system checks if locks are stale
-- **Stale locks** (from crashes): Automatically cleaned up and indexing retries
-- **Active locks** (from running agents): Returns clear error message asking to wait
-
-**Error Messages:**
-- Active indexing detected: `"BM25 index is currently being used by another process. Please wait and try again later."`
-- Stale locks cleaned: Logs warnings and retries automatically
-
-**Thread Safety:**
-- In-process synchronization: Mutex prevents concurrent writers within the same process
-- Cross-process safety: File-based locks prevent concurrent writers across different processes
-- Read operations are always safe and never blocked
-
-**Best Practices:**
-- If you see the "currently being used" error, wait for the other indexing operation to complete
-- Indexing operations typically complete in seconds to minutes depending on codebase size
-- Multiple agents can safely perform search operations simultaneously (reads are never locked)
-
-### Code Chunking
-- **Default**: Hybrid AST-based chunking
-- **AST Support**: Rust, Python, JavaScript, TypeScript, Go, Java, Swift, C, C++, C#, Ruby, PHP
-- **Fallback**: 50 lines per chunk for unsupported languages
-- **Metadata**: Tracks start/end lines, language, file hash, project
-
-### File Processing
-- **Binary Detection**: 30% non-printable byte threshold (PDFs handled specially)
-- **Language Detection**: 40+ file types supported (code, docs, configs)
-- **PDF Processing**: Automatic text extraction and Markdown conversion with table preservation
-- **Hash Algorithm**: SHA256 for change detection (works for all file types including PDFs)
-- **.gitignore Support**: Uses `ignore` crate
-
 ## Development
 
-### Running Tests
-
-```bash
-# Run all unit tests (413 tests with ~94% coverage)
-cargo test --lib
-
-# Run specific module tests
-cargo test --lib types::tests
-cargo test --lib chunker::tests
-cargo test --lib pdf_extractor::tests  # PDF to Markdown conversion tests
-cargo test --lib bm25_search::tests    # Includes concurrent access & lock safety tests
-cargo test --lib config::tests         # Includes validation & env override tests
-cargo test --lib indexing::tests       # Includes error path & edge case tests
-
-# Run with output
-cargo test --lib -- --nocapture
-
-# Run with code coverage
-cargo llvm-cov --lib --html
-# Open target/llvm-cov/html/index.html to view coverage report
-```
+[[TODO]]
 
 ### Building
 
@@ -685,69 +284,6 @@ RUST_LOG=trace cargo run
 3. **Batch processing**: Default 32 chunks per batch is optimal for most systems
 4. **Incremental updates**: Use after initial index to save time
 
-## Current Status
-
-### ✅ Production Ready - 100% Complete
-
-- Core architecture with modular design
-- All 9 MCP tools implemented and working
-- **All 9 MCP slash commands implemented**
-- **Hybrid search** - Vector similarity + Full BM25 with IDF
-- **AST-based chunking** - Semantic code extraction for 12 languages
-- **Code navigation** - Find definitions, references, and call graphs (LSP-like)
-- **Multi-project support** - Index and query multiple codebases
-- **Persistent hash cache** - Fast incremental updates across restarts
-- **Concurrent access protection** - Smart lock management prevents index corruption
-- FastEmbed integration for local embeddings
-- Qdrant vector database integration
-- File walking with .gitignore support
-- Language detection (40+ file types: code, docs, configs)
-- PDF to Markdown conversion with table preservation
-- SHA256-based change detection
-- 413 unit tests passing (including relations, PDF extraction, BM25/RRF, adaptive threshold, cross-process locking, and lock safety tests)
-- Comprehensive documentation
-- **Full MCP prompts support enabled**
-- **Hybrid search with Tantivy BM25 + LanceDB vector using RRF**
-- **Hybrid relations provider** - Stack-graphs for Python/TS/Java/Ruby, RepoMap fallback for all languages
-
-### 📋 Known Limitations
-
-1. **Qdrant API Changes**
-   - Requires builder patterns (UpsertPointsBuilder, SearchPointsBuilder, etc.)
-   - All builders implemented correctly
-
-2. **FastEmbed Mutability**
-   - Uses unsafe workaround for mutable model access
-   - Works correctly but should be refactored to use Arc<Mutex<>>
-
-3. **Async Trait Warnings**
-   - 9 harmless warnings about `async fn` in public traits
-   - Cosmetic issue, does not affect functionality
-
-## Limitations
-
-### Current Limitations
-
-- **Qdrant Backend**: Requires external Qdrant server when using qdrant-backend feature
-  - Default LanceDB backend is fully embedded with no external dependencies
-
-- **Model Download**: First run downloads ~50MB model
-  - Future: Include model in binary or provide offline installer
-
-- **Path Filtering**: Currently post-query filtering (not optimized)
-  - Future: Add Qdrant payload indexing for path patterns
-
-- **No Configuration File**: All settings hardcoded
-  - Future: Add TOML/YAML config support
-
-### Scale Limitations
-
-- **Large Codebases**: Projects with 100k+ files may take significant time to index
-  - Mitigation: Use incremental updates
-
-- **Memory**: Very large indexes (1M+ chunks) may require significant RAM
-  - Typical project (5k files) uses <500MB total
-
 ## Troubleshooting
 
 ### Index Lock Errors
@@ -798,61 +334,6 @@ export HF_ENDPOINT=https://hf-mirror.com
 # Use exclude_patterns to skip unnecessary files
 ```
 
-## Future Enhancements
-
-### High Priority
-- [ ] Add comprehensive integration tests
-- [ ] Configuration file support (TOML)
-- [ ] Cache IDF statistics to disk for faster startup
-
-### Medium Priority
-- [ ] Embedded vector DB option (no external dependencies)
-- [ ] Support for more embedding models
-- [ ] Performance benchmarks and profiling
-- [ ] AST support for more languages (Kotlin, Perl, Scala, etc.)
-
-### Low Priority
-- [ ] Web UI for testing/debugging
-- [ ] Metrics and monitoring endpoints
-- [ ] Multi-language documentation
-- [ ] Alternative transport mechanisms (HTTP, WebSocket)
-
 ## License
 
 MIT License - see LICENSE file for details
-
-## Contributing
-
-Contributions welcome! Please ensure:
-
-1. **Code Quality**:
-   - Source files stay under 600 lines (enforced)
-   - Code is formatted with `cargo fmt`
-   - Clippy lints pass (`cargo clippy`)
-
-2. **Testing**:
-   - Add tests for new functionality
-   - Existing tests pass (`cargo test`)
-   - Update documentation
-
-3. **Commits**:
-   - Clear, descriptive commit messages
-   - One logical change per commit
-   - Reference issues where applicable
-
-## Support
-
-- **Issues**: https://github.com/Brainwires/project-rag/issues
-- **Documentation**: See [docs/](docs/) for deployment, troubleshooting, and slash commands
-- **Architecture**: See [docs/adr/](docs/adr/) for architecture decision records
-
-## Acknowledgments
-
-- **rmcp**: Official Rust Model Context Protocol SDK
-- **Qdrant**: High-performance vector database
-- **FastEmbed**: Fast local embedding generation
-- **Claude**: For MCP protocol and testing
-
----
-
-Built with ❤️ using Rust 2024 Edition

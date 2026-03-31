@@ -40,22 +40,6 @@ pub trait VectorDatabase: Send + Sync {
         hybrid: bool,
     ) -> Result<Vec<SearchResult>>;
 
-    /// Search with filters
-    #[allow(clippy::too_many_arguments)]
-    async fn search_filtered(
-        &self,
-        query_vector: Vec<f32>,
-        query_text: &str,
-        limit: usize,
-        min_score: f32,
-        project: Option<String>,
-        root_path: Option<String>,
-        hybrid: bool,
-        file_extensions: Vec<String>,
-        languages: Vec<String>,
-        path_patterns: Vec<String>,
-    ) -> Result<Vec<SearchResult>>;
-
     /// Delete embeddings for a specific file
     async fn delete_by_file(&self, file_path: &str) -> Result<usize>;
 

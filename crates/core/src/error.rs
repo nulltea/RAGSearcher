@@ -12,9 +12,6 @@ pub enum RagError {
     #[error("Vector database error: {0}")]
     VectorDb(#[from] VectorDbError),
 
-    #[error("Indexing error: {0}")]
-    Indexing(#[from] IndexingError),
-
     #[error("Chunking error: {0}")]
     Chunking(#[from] ChunkingError),
 
@@ -23,12 +20,6 @@ pub enum RagError {
 
     #[error("Validation error: {0}")]
     Validation(#[from] ValidationError),
-
-    #[error("Git error: {0}")]
-    Git(#[from] GitError),
-
-    #[error("Cache error: {0}")]
-    Cache(#[from] CacheError),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -96,57 +87,17 @@ pub enum VectorDbError {
     NotInitialized,
 }
 
-/// Errors related to file indexing
-#[derive(Error, Debug)]
-pub enum IndexingError {
-    #[error("Directory not found: {0}")]
-    DirectoryNotFound(String),
-
-    #[error("Path is not a directory: {0}")]
-    NotADirectory(String),
-
-    #[error("Failed to walk directory: {0}")]
-    WalkFailed(String),
-
-    #[error("Failed to read file '{file}': {reason}")]
-    FileReadFailed { file: String, reason: String },
-
-    #[error("File is not valid UTF-8: {0}")]
-    InvalidUtf8(String),
-
-    #[error("File is binary and cannot be indexed: {0}")]
-    BinaryFile(String),
-
-    #[error("File size exceeds maximum: {size} > {max}")]
-    FileTooLarge { size: usize, max: usize },
-
-    #[error("Failed to calculate file hash: {0}")]
-    HashCalculationFailed(String),
-
-    #[error("No files found to index")]
-    NoFilesFound,
-
-    #[error("Indexing was cancelled")]
-    Cancelled,
-}
-
-/// Errors related to code chunking
+/// Errors related to text chunking
 #[derive(Error, Debug)]
 pub enum ChunkingError {
-    #[error("Failed to parse code: {0}")]
+    #[error("Failed to parse content: {0}")]
     ParseFailed(String),
-
-    #[error("Unsupported language: {0}")]
-    UnsupportedLanguage(String),
 
     #[error("Invalid chunk size: {0}")]
     InvalidChunkSize(String),
 
     #[error("No chunks generated from file: {0}")]
     NoChunksGenerated(String),
-
-    #[error("AST parsing failed: {0}")]
-    AstParsingFailed(String),
 }
 
 /// Errors related to configuration
@@ -201,53 +152,6 @@ pub enum ValidationError {
 
     #[error("Empty {0}")]
     Empty(String),
-}
-
-/// Errors related to git operations
-#[derive(Error, Debug)]
-pub enum GitError {
-    #[error("Git repository not found at: {0}")]
-    RepoNotFound(String),
-
-    #[error("Failed to open git repository: {0}")]
-    OpenFailed(String),
-
-    #[error("Failed to get git reference: {0}")]
-    RefNotFound(String),
-
-    #[error("Failed to iterate commits: {0}")]
-    IterFailed(String),
-
-    #[error("Invalid commit hash: {0}")]
-    InvalidCommitHash(String),
-
-    #[error("Failed to parse commit: {0}")]
-    ParseFailed(String),
-
-    #[error("Branch not found: {0}")]
-    BranchNotFound(String),
-
-    #[error("No commits found matching criteria")]
-    NoCommitsFound,
-}
-
-/// Errors related to cache operations
-#[derive(Error, Debug)]
-pub enum CacheError {
-    #[error("Failed to load cache from '{path}': {reason}")]
-    LoadFailed { path: String, reason: String },
-
-    #[error("Failed to save cache to '{path}': {reason}")]
-    SaveFailed { path: String, reason: String },
-
-    #[error("Failed to parse cache file: {0}")]
-    ParseFailed(String),
-
-    #[error("Cache is corrupted: {0}")]
-    Corrupted(String),
-
-    #[error("Failed to create cache directory: {0}")]
-    DirectoryCreationFailed(String),
 }
 
 // Conversion from anyhow::Error to RagError
@@ -367,18 +271,6 @@ mod tests {
     }
 
     #[test]
-    fn test_indexing_error_file_too_large() {
-        let err = IndexingError::FileTooLarge {
-            size: 1000000,
-            max: 500000,
-        };
-        assert_eq!(
-            err.to_string(),
-            "File size exceeds maximum: 1000000 > 500000"
-        );
-    }
-
-    #[test]
     fn test_validation_error_constraint() {
         let err = ValidationError::ConstraintViolation {
             field: "max_file_size".to_string(),
@@ -400,18 +292,6 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "Invalid configuration value for 'port': must be between 1-65535"
-        );
-    }
-
-    #[test]
-    fn test_cache_error_load_failed() {
-        let err = CacheError::LoadFailed {
-            path: "/tmp/cache.json".to_string(),
-            reason: "permission denied".to_string(),
-        };
-        assert_eq!(
-            err.to_string(),
-            "Failed to load cache from '/tmp/cache.json': permission denied"
         );
     }
 

@@ -14,6 +14,12 @@ fn get_backend_port(state: tauri::State<'_, BackendPort>) -> u16 {
 }
 
 fn main() {
+    // Ensure fastembed uses the platform cache directory instead of CWD/.fastembed_cache.
+    // This must be set before any fastembed initialization.
+    let cache_dir = project_rag::paths::PlatformPaths::cache_dir().join("fastembed");
+    // SAFETY: Called at the very start of main() before any threads are spawned.
+    unsafe { std::env::set_var("FASTEMBED_CACHE_DIR", &cache_dir) };
+
     tauri::Builder::default()
         .setup(|app| {
             let (tx, rx) = std::sync::mpsc::channel();

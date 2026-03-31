@@ -9,7 +9,6 @@
 //! Future refactoring could extract search logic into traits if needed.
 
 use crate::bm25_search::BM25Search;
-use crate::glob_utils;
 use crate::types::{ChunkMetadata, SearchResult};
 use crate::vector_db::{DatabaseStats, VectorDatabase};
 use anyhow::{Context, Result};
@@ -699,68 +698,6 @@ impl VectorDatabase for LanceVectorDB {
 
             Ok(search_results)
         }
-    }
-
-    async fn search_filtered(
-        &self,
-        query_vector: Vec<f32>,
-        query_text: &str,
-        limit: usize,
-        min_score: f32,
-        project: Option<String>,
-        root_path: Option<String>,
-        hybrid: bool,
-        file_extensions: Vec<String>,
-        languages: Vec<String>,
-        path_patterns: Vec<String>,
-    ) -> Result<Vec<SearchResult>> {
-        // Get more results than requested to account for filtering
-        let search_limit = limit * 3;
-
-        // Do basic search with hybrid support
-        let mut results = self
-            .search(
-                query_vector,
-                query_text,
-                search_limit,
-                min_score,
-                project.clone(),
-                root_path.clone(),
-                hybrid,
-            )
-            .await?;
-
-        // Post-process filtering
-        results.retain(|result| {
-            // Filter by file extension
-            if !file_extensions.is_empty() {
-                let has_extension = file_extensions
-                    .iter()
-                    .any(|ext| result.file_path.ends_with(&format!(".{}", ext)));
-                if !has_extension {
-                    return false;
-                }
-            }
-
-            // Filter by language
-            if !languages.is_empty() && !languages.contains(&result.language) {
-                return false;
-            }
-
-            // Filter by path pattern using proper glob matching
-            if !path_patterns.is_empty() {
-                if !glob_utils::matches_any_pattern(&result.file_path, &path_patterns) {
-                    return false;
-                }
-            }
-
-            true
-        });
-
-        // Truncate to requested limit
-        results.truncate(limit);
-
-        Ok(results)
     }
 
     async fn delete_by_file(&self, file_path: &str) -> Result<usize> {

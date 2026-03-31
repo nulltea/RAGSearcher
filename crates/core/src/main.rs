@@ -7,11 +7,11 @@ use project_rag::RagClient;
 use std::panic;
 use std::sync::Arc;
 
-/// Project-RAG: RAG-based codebase indexing and semantic search MCP server
+/// Project-RAG: Paper library with semantic search
 #[derive(Parser)]
 #[command(name = "project-rag")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "MCP server for semantic code search with RAG capabilities", long_about = None)]
+#[command(about = "Paper library with semantic search and MCP server", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -98,18 +98,15 @@ async fn main() -> Result<()> {
 
 /// Display comprehensive version and system information
 fn show_version_info() {
-    // Basic version info
     println!("project-rag v{}", env!("CARGO_PKG_VERSION"));
     println!();
 
-    // System information
     println!("System Information:");
     println!("  Build Date:      {}", env!("BUILD_TIMESTAMP"));
     println!("  Git Commit:      {}", env!("GIT_COMMIT_HASH"));
     println!("  Rust Version:    {}", env!("CARGO_PKG_RUST_VERSION"));
     println!();
 
-    // Vector database configuration
     println!("Vector Database:");
     let backend = env!("VECTOR_DB_BACKEND");
     println!("  Backend:         {}", backend);
@@ -131,14 +128,12 @@ fn show_version_info() {
     }
     println!();
 
-    // Embedding model information
     println!("Embedding Model:");
     println!("  Model:           all-MiniLM-L6-v2");
     println!("  Dimensions:      384");
     println!("  Provider:        FastEmbed (local, no API calls)");
     println!();
 
-    // Configuration
     println!("Configuration:");
     use project_rag::paths::PlatformPaths;
     let config_path = PlatformPaths::default_config_path();
@@ -147,21 +142,10 @@ fn show_version_info() {
     println!("  Env Prefix:      PROJECT_RAG_*");
     println!();
 
-    // Additional features
     println!("Features:");
     println!("  Hybrid Search:   Enabled (Vector + BM25 keyword search)");
-    println!("  AST Chunking:    12 languages supported");
-    println!("  Git History:     Semantic search across commits");
-    println!("  Incremental:     Smart indexing (auto-detects changes)");
-    println!();
-
-    // Supported languages
-    println!("Supported Languages:");
-    println!("  Programming:     Rust, Python, JavaScript, TypeScript, Go, Java,");
-    println!("                   Swift, C, C++, C#, Ruby, PHP, Kotlin, Scala");
-    println!("  Configuration:   JSON, YAML, TOML, XML");
-    println!("  Markup:          HTML, CSS, SCSS, Markdown");
-    println!("  Other:           Shell, SQL, Text");
+    println!("  Paper Library:   Upload, extract, and search papers");
+    println!("  Extraction:      Pattern and algorithm extraction via Gemini");
 }
 
 /// Set up a global panic handler that logs panic information
@@ -182,7 +166,6 @@ fn setup_panic_handler() {
             "unknown panic message".to_string()
         };
 
-        // Log to tracing system
         tracing::error!(
             "PANIC at {}: {}\nBacktrace:\n{:?}",
             location,
@@ -190,7 +173,6 @@ fn setup_panic_handler() {
             backtrace
         );
 
-        // Also log to stderr for immediate visibility
         eprintln!("\n!!! PANIC !!!");
         eprintln!("Location: {}", location);
         eprintln!("Message: {}", message);

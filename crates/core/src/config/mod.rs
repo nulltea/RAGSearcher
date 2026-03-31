@@ -20,9 +20,6 @@ pub struct Config {
 
     /// Search configuration
     pub search: SearchConfig,
-
-    /// Cache configuration
-    pub cache: CacheConfig,
 }
 
 /// Vector database configuration
@@ -53,18 +50,14 @@ pub struct EmbeddingConfig {
     pub model_name: String,
 
     /// Batch size for embedding generation
-    /// Smaller values allow faster cancellation response but may be less efficient
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
 
     /// Timeout in seconds for embedding generation per batch
-    /// This is per-batch, not total - smaller batches mean faster timeout response
     #[serde(default = "default_embedding_timeout")]
     pub timeout_secs: u64,
 
     /// Maximum number of chunks to process before checking for cancellation
-    /// This provides more granular control over cancellation responsiveness
-    /// Set to 0 to use batch_size (check once per batch)
     #[serde(default = "default_cancellation_check_interval")]
     pub cancellation_check_interval: usize,
 }
@@ -79,14 +72,6 @@ pub struct IndexingConfig {
     /// Maximum file size to index (in bytes)
     #[serde(default = "default_max_file_size")]
     pub max_file_size: usize,
-
-    /// Default include patterns
-    #[serde(default)]
-    pub include_patterns: Vec<String>,
-
-    /// Default exclude patterns
-    #[serde(default = "default_exclude_patterns")]
-    pub exclude_patterns: Vec<String>,
 }
 
 /// Search configuration
@@ -103,18 +88,6 @@ pub struct SearchConfig {
     /// Enable hybrid search (vector + BM25) by default
     #[serde(default = "default_hybrid_search")]
     pub hybrid: bool,
-}
-
-/// Cache configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CacheConfig {
-    /// Hash cache file path
-    #[serde(default = "default_hash_cache_path")]
-    pub hash_cache_path: PathBuf,
-
-    /// Git cache file path
-    #[serde(default = "default_git_cache_path")]
-    pub git_cache_path: PathBuf,
 }
 
 // Default value functions
@@ -142,19 +115,14 @@ fn default_model_name() -> String {
 }
 
 fn default_batch_size() -> usize {
-    // Reduced from 32 to 8 for faster cancellation response
-    // Each batch takes ~1-3 seconds, so cancellation can respond within 3 seconds
     8
 }
 
 fn default_embedding_timeout() -> u64 {
-    // Reduced from 30 to 10 seconds for faster timeout detection per batch
     10
 }
 
 fn default_cancellation_check_interval() -> usize {
-    // Check cancellation every 4 chunks (every ~0.5-1.5 seconds)
-    // Set to 0 to use batch_size instead
     4
 }
 
@@ -164,16 +132,6 @@ fn default_chunk_size() -> usize {
 
 fn default_max_file_size() -> usize {
     1_048_576 // 1 MB
-}
-
-fn default_exclude_patterns() -> Vec<String> {
-    vec![
-        "target".to_string(),
-        "node_modules".to_string(),
-        ".git".to_string(),
-        "dist".to_string(),
-        "build".to_string(),
-    ]
 }
 
 fn default_min_score() -> f32 {
@@ -186,14 +144,6 @@ fn default_result_limit() -> usize {
 
 fn default_hybrid_search() -> bool {
     true
-}
-
-fn default_hash_cache_path() -> PathBuf {
-    crate::paths::PlatformPaths::default_hash_cache_path()
-}
-
-fn default_git_cache_path() -> PathBuf {
-    crate::paths::PlatformPaths::default_git_cache_path()
 }
 
 impl Default for VectorDbConfig {
@@ -223,8 +173,6 @@ impl Default for IndexingConfig {
         Self {
             chunk_size: default_chunk_size(),
             max_file_size: default_max_file_size(),
-            include_patterns: Vec::new(),
-            exclude_patterns: default_exclude_patterns(),
         }
     }
 }
@@ -235,15 +183,6 @@ impl Default for SearchConfig {
             min_score: default_min_score(),
             limit: default_result_limit(),
             hybrid: default_hybrid_search(),
-        }
-    }
-}
-
-impl Default for CacheConfig {
-    fn default() -> Self {
-        Self {
-            hash_cache_path: default_hash_cache_path(),
-            git_cache_path: default_git_cache_path(),
         }
     }
 }
@@ -280,7 +219,6 @@ impl Config {
 
     /// Save configuration to file
     pub fn save(&self, path: &Path) -> Result<(), RagError> {
-        // Create parent directory if needed
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 ConfigError::SaveFailed(format!("Failed to create config directory: {}", e))
@@ -305,7 +243,6 @@ impl Config {
 
     /// Validate configuration values
     pub fn validate(&self) -> Result<(), RagError> {
-        // Validate vector DB backend
         if self.vector_db.backend != "lancedb" && self.vector_db.backend != "qdrant" {
             return Err(ConfigError::InvalidValue {
                 key: "vector_db.backend".to_string(),
@@ -317,7 +254,6 @@ impl Config {
             .into());
         }
 
-        // Validate batch size
         if self.embedding.batch_size == 0 {
             return Err(ConfigError::InvalidValue {
                 key: "embedding.batch_size".to_string(),
@@ -326,7 +262,6 @@ impl Config {
             .into());
         }
 
-        // Validate chunk size
         if self.indexing.chunk_size == 0 {
             return Err(ConfigError::InvalidValue {
                 key: "indexing.chunk_size".to_string(),
@@ -335,7 +270,6 @@ impl Config {
             .into());
         }
 
-        // Validate max file size
         if self.indexing.max_file_size == 0 {
             return Err(ConfigError::InvalidValue {
                 key: "indexing.max_file_size".to_string(),
@@ -344,7 +278,6 @@ impl Config {
             .into());
         }
 
-        // Validate min_score range
         if !(0.0..=1.0).contains(&self.search.min_score) {
             return Err(ConfigError::InvalidValue {
                 key: "search.min_score".to_string(),
@@ -353,7 +286,6 @@ impl Config {
             .into());
         }
 
-        // Validate limit
         if self.search.limit == 0 {
             return Err(ConfigError::InvalidValue {
                 key: "search.limit".to_string(),
@@ -367,34 +299,28 @@ impl Config {
 
     /// Apply environment variable overrides
     pub fn apply_env_overrides(&mut self) {
-        // Vector DB backend
         if let Ok(backend) = std::env::var("PROJECT_RAG_DB_BACKEND") {
             self.vector_db.backend = backend;
         }
 
-        // LanceDB path
         if let Ok(path) = std::env::var("PROJECT_RAG_LANCEDB_PATH") {
             self.vector_db.lancedb_path = PathBuf::from(path);
         }
 
-        // Qdrant URL
         if let Ok(url) = std::env::var("PROJECT_RAG_QDRANT_URL") {
             self.vector_db.qdrant_url = url;
         }
 
-        // Embedding model
         if let Ok(model) = std::env::var("PROJECT_RAG_MODEL") {
             self.embedding.model_name = model;
         }
 
-        // Batch size
         if let Ok(batch_size) = std::env::var("PROJECT_RAG_BATCH_SIZE")
             && let Ok(size) = batch_size.parse()
         {
             self.embedding.batch_size = size;
         }
 
-        // Min score
         if let Ok(min_score) = std::env::var("PROJECT_RAG_MIN_SCORE")
             && let Ok(score) = min_score.parse()
         {
@@ -411,12 +337,10 @@ impl Config {
     }
 }
 
-// Tests are inline in this module
 #[cfg(test)]
 mod tests {
     #[test]
     fn test_config_placeholder() {
         // Placeholder for config tests
-        // TODO: Add comprehensive config tests
     }
 }

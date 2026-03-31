@@ -1,5 +1,4 @@
 use super::{DatabaseStats, VectorDatabase};
-use crate::glob_utils;
 use crate::types::{ChunkMetadata, SearchResult};
 use anyhow::{Context, Result};
 use qdrant_client::qdrant::vectors_config::Config;
@@ -282,72 +281,21 @@ impl VectorDatabase for QdrantVectorDB {
         root_path: Option<String>,
         hybrid: bool,
     ) -> Result<Vec<SearchResult>> {
-        self.search_filtered(
-            query_vector,
-            query_text,
-            limit,
-            min_score,
-            project,
-            root_path,
-            hybrid,
-            vec![],
-            vec![],
-            vec![],
-        )
-        .await
-    }
-
-    async fn search_filtered(
-        &self,
-        query_vector: Vec<f32>,
-        query_text: &str,
-        limit: usize,
-        min_score: f32,
-        project: Option<String>,
-        root_path: Option<String>,
-        hybrid: bool,
-        file_extensions: Vec<String>,
-        languages: Vec<String>,
-        path_patterns: Vec<String>,
-    ) -> Result<Vec<SearchResult>> {
         tracing::debug!(
-            "Searching with limit={}, min_score={}, project={:?}, root_path={:?}, hybrid={}, filters: ext={:?}, lang={:?}, path={:?}",
+            "Searching with limit={}, min_score={}, project={:?}, root_path={:?}, hybrid={}",
             limit,
             min_score,
             project,
             root_path,
             hybrid,
-            file_extensions,
-            languages,
-            path_patterns
         );
 
         let mut filter = Filter::default();
         let mut must_conditions = vec![];
 
-        // Add project filter
         if let Some(proj) = project {
             must_conditions.push(Condition::matches("project", proj));
         }
-
-        // Add file extension filter
-        if !file_extensions.is_empty() {
-            must_conditions.push(Condition::matches(
-                "extension",
-                file_extensions.into_iter().collect::<Vec<_>>(),
-            ));
-        }
-
-        // Add language filter
-        if !languages.is_empty() {
-            must_conditions.push(Condition::matches(
-                "language",
-                languages.into_iter().collect::<Vec<_>>(),
-            ));
-        }
-
-        // Note: Path pattern filtering would require more complex logic
-        // For now, we'll do post-filtering in memory for path patterns
 
         if !must_conditions.is_empty() {
             filter.must = must_conditions;
@@ -368,7 +316,6 @@ impl VectorDatabase for QdrantVectorDB {
             .await
             .context("Failed to search points")?;
 
-        // Collect results with async BM25 scoring
         let mut results: Vec<SearchResult> = Vec::new();
 
         for point in search_result.result {
@@ -379,10 +326,8 @@ impl VectorDatabase for QdrantVectorDB {
                 None => continue,
             };
 
-            // Calculate keyword score if hybrid search is enabled
             let (final_score, keyword_score) = if hybrid {
                 let kw_score = self.calculate_bm25_score(query_text, &content).await;
-                // Combine scores: 70% vector + 30% keyword
                 let combined = (vector_score * 0.7) + (kw_score * 0.3);
                 (combined, Some(kw_score))
             } else {
@@ -417,7 +362,6 @@ impl VectorDatabase for QdrantVectorDB {
                 .get("root_path")
                 .and_then(|v| v.as_str().map(String::from));
 
-            // Filter by root_path if specified
             if let Some(ref filter_path) = root_path {
                 if result_root_path.as_ref() != Some(filter_path) {
                     continue;
@@ -438,18 +382,12 @@ impl VectorDatabase for QdrantVectorDB {
             });
         }
 
-        // Re-sort by combined score if hybrid
         if hybrid {
             results.sort_by(|a, b| {
                 b.score
                     .partial_cmp(&a.score)
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
-        }
-
-        // Post-filter by path patterns using proper glob matching
-        if !path_patterns.is_empty() {
-            results.retain(|r| glob_utils::matches_any_pattern(&r.file_path, &path_patterns));
         }
 
         Ok(results)

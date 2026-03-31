@@ -13,6 +13,9 @@ backend = "lancedb"
 
 # LanceDB database directory path (only used if backend = "lancedb")
 # Default: Platform-specific data directory + "/project-rag/lancedb"
+#   macOS:   ~/Library/Application Support/project-rag/lancedb
+#   Linux:   ~/.local/share/project-rag/lancedb
+#   Windows: %LOCALAPPDATA%/project-rag/lancedb
 # lancedb_path = "/custom/path/to/lancedb"
 
 # Qdrant server URL (only used if backend = "qdrant")
@@ -32,31 +35,32 @@ collection_name = "code_embeddings"
 model_name = "all-MiniLM-L6-v2"
 
 # Number of texts to process in each embedding batch
-# Larger batches are faster but use more memory
-# Default: 32
-batch_size = 32
+# Smaller batches respond faster to cancellation but may be less efficient
+# Default: 8
+batch_size = 8
 
-# Timeout in seconds for embedding generation
-# Default: 30
-timeout_secs = 30
+# Timeout in seconds for embedding generation per batch
+# Default: 10
+timeout_secs = 10
+
+# FastEmbed model cache directory
+# Downloaded model files are stored here to avoid re-downloading
+# Default: Platform-specific cache directory + "/fastembed"
+#   macOS:   ~/Library/Caches/fastembed
+#   Linux:   ~/.cache/fastembed
+#   Windows: %LOCALAPPDATA%/fastembed
+# Can also be set via FASTEMBED_CACHE_DIR environment variable
+# fastembed_cache_path = "/custom/path/to/fastembed"
 
 [indexing]
 # Chunk size for FixedLines chunking strategy (lines per chunk)
 # Default: 50
 chunk_size = 50
 
-# Maximum file size to index in bytes (1 MB = 1048576)
-# Files larger than this will be skipped
+# Maximum file size to process in bytes (1 MB = 1048576)
+# Files larger than this will be skipped during paper upload
 # Default: 1048576 (1 MB)
 max_file_size = 1048576
-
-# File patterns to include (empty = include all)
-# Example: include_patterns = ["**/*.rs", "**/*.py"]
-include_patterns = []
-
-# File patterns to exclude (always applied)
-# Default: ["target", "node_modules", ".git", "dist", "build"]
-exclude_patterns = ["target", "node_modules", ".git", "dist", "build"]
 
 [search]
 # Minimum similarity score for search results (0.0 to 1.0)
@@ -73,25 +77,25 @@ limit = 10
 # Default: true
 hybrid = true
 
-[cache]
-# Path to hash cache file for incremental indexing
-# Default: Platform-specific cache directory + "/project-rag/hash_cache.json"
-# hash_cache_path = "/custom/path/to/hash_cache.json"
-
-# Path to git cache file for git history indexing
-# Default: Platform-specific cache directory + "/project-rag/git_cache.json"
-# git_cache_path = "/custom/path/to/git_cache.json"
+[storage]
+# Path where uploaded paper files (PDFs, extracted text) are stored
+# Default: Platform-specific data directory + "/project-rag/uploads"
+#   macOS:   ~/Library/Application Support/project-rag/uploads
+#   Linux:   ~/.local/share/project-rag/uploads
+#   Windows: %LOCALAPPDATA%/project-rag/uploads
+# papers_path = "/custom/path/to/papers"
 
 # Environment Variable Overrides
 # ==============================
-# You can override any configuration value using environment variables:
+# You can override configuration values using environment variables:
 #
 #   PROJECT_RAG_DB_BACKEND         - Vector database backend
-#   PROJECT_RAG_LANCEDB_PATH       - LanceDB path
+#   PROJECT_RAG_LANCEDB_PATH       - LanceDB database path
 #   PROJECT_RAG_QDRANT_URL         - Qdrant server URL
 #   PROJECT_RAG_MODEL              - Embedding model name
 #   PROJECT_RAG_BATCH_SIZE         - Embedding batch size
 #   PROJECT_RAG_MIN_SCORE          - Minimum search score
+#   FASTEMBED_CACHE_DIR            - FastEmbed model cache directory
 #
 # Example:
 #   export PROJECT_RAG_MODEL="BAAI/bge-base-en-v1.5"

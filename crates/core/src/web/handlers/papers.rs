@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -8,7 +7,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 
 use crate::embedding::EmbeddingProvider;
-use crate::indexer::{FileInfo, extract_pdf};
+use crate::indexer::{ChunkInput, extract_pdf};
 use crate::metadata::models::{PaperCreate, PaperListParams, PaperStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
@@ -218,8 +217,7 @@ pub async fn upload_paper(
         .map_err(|e| ApiError::Internal(format!("Failed to save text content: {}", e)))?;
 
     // Chunk the content
-    let file_info = FileInfo {
-        path: PathBuf::from(format!("papers/{}", paper_id)),
+    let chunk_input = ChunkInput {
         relative_path: format!("papers/{}", paper_id),
         root_path: "papers".to_string(),
         project: Some(paper_id.clone()),
@@ -234,7 +232,7 @@ pub async fn upload_paper(
         },
     };
 
-    let chunks = state.client.chunker.chunk_file(&file_info);
+    let chunks = state.client.chunker.chunk_file(&chunk_input);
 
     if chunks.is_empty() {
         state

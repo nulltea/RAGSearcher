@@ -33,33 +33,15 @@ futures = "0.3"
 qdrant-client = { version = "1.15", optional = true }
 fastembed = "5.1"
 tantivy = "0.22"
-git2 = "0.19"
 anyhow = "1.0"
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-walkdir = "2.5"
-regex = "1.10"
 chrono = "0.4"
 dirs = "5.0"
 sha2 = "0.10"
-ignore = "0.4"
-globset = "0.4"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-tree-sitter = "0.25"
-tree-sitter-rust = "0.23"
-tree-sitter-python = "0.23"
-tree-sitter-javascript = "0.23"
-tree-sitter-typescript = "0.23"
-tree-sitter-go = "0.23"
-tree-sitter-java = "0.23"
-tree-sitter-swift = "0.7"
-tree-sitter-c = "0.24"
-tree-sitter-cpp = "0.23"
-tree-sitter-c-sharp = "0.23"
-tree-sitter-ruby = "0.23"
-tree-sitter-php = "0.24"
 # CLI and configuration
 clap = { version = "4", features = ["derive", "env"] }
 thiserror = "2.0"
@@ -69,12 +51,6 @@ pdf-extract = "0.7"
 lopdf = "0.34"
 # HTTP client for URL downloads
 reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
-# Performance
-rayon = "1.10"
-# Async utilities for cancellation
-tokio-util = "0.7"
-# Cross-platform file locking for cross-process coordination
-fs2 = "0.4"
 # Web server
 axum = { version = "0.8", features = ["multipart"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
@@ -83,8 +59,6 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 
 [dev-dependencies]
 tempfile = "3.0"
-criterion = { version = "0.5", features = ["async_tokio"] }
-filetime = "0.2"
 
 [build-dependencies]
 chrono = "0.4"
@@ -98,11 +72,6 @@ qdrant-backend = ["qdrant-client"]  # External Qdrant server
 # Alternative folder name for data storage (for consuming crates that want different folder)
 alt-folder-name = []
 
-# High-precision code navigation for Python, TypeScript, Java, Ruby
-# This feature is prepared but not yet fully implemented
-# When enabled, uses stack-graphs for ~95% accuracy name resolution
-stack-graphs = []
-
 [lib]
 name = "project_rag"
 path = "src/lib.rs"
@@ -111,6 +80,3 @@ path = "src/lib.rs"
 name = "project-rag"
 path = "src/main.rs"
 
-[[bench]]
-name = "indexing_benchmark"
-harness = false

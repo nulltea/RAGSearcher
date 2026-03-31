@@ -1,69 +1,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Request to index a codebase
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IndexRequest {
-    /// Path to the codebase directory to index
-    pub path: String,
-    /// Optional project name (for multi-project support)
-    #[serde(default)]
-    pub project: Option<String>,
-    /// Optional glob patterns to include (e.g., ["**/*.rs", "**/*.toml"])
-    #[serde(default)]
-    pub include_patterns: Vec<String>,
-    /// Optional glob patterns to exclude (e.g., ["**/target/**", "**/node_modules/**"])
-    #[serde(default)]
-    pub exclude_patterns: Vec<String>,
-    /// Maximum file size in bytes to index (default: 1MB)
-    #[serde(default = "default_max_file_size")]
-    pub max_file_size: usize,
-}
-
-fn default_max_file_size() -> usize {
-    1_048_576 // 1MB
-}
-
-/// Indexing mode used
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum IndexingMode {
-    /// Full indexing (all files)
-    Full,
-    /// Incremental update (only changed files)
-    Incremental,
-}
-
-/// Response from indexing operation
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IndexResponse {
-    /// Indexing mode used (full or incremental)
-    pub mode: IndexingMode,
-    /// Number of files successfully indexed
-    pub files_indexed: usize,
-    /// Number of code chunks created
-    pub chunks_created: usize,
-    /// Number of embeddings generated
-    pub embeddings_generated: usize,
-    /// Time taken in milliseconds
-    pub duration_ms: u64,
-    /// Any errors encountered (non-fatal)
-    #[serde(default)]
-    pub errors: Vec<String>,
-    /// Number of files updated (incremental mode only)
-    #[serde(default)]
-    pub files_updated: usize,
-    /// Number of files removed (incremental mode only)
-    #[serde(default)]
-    pub files_removed: usize,
-}
-
-/// Request to query the codebase
+/// Request to query the indexed content
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct QueryRequest {
     /// The question or search query
     pub query: String,
-    /// Optional path to filter by specific indexed codebase
+    /// Optional path to filter by specific indexed content
     #[serde(default)]
     pub path: Option<String>,
     /// Optional project name to filter by
@@ -100,7 +43,7 @@ pub struct SearchResult {
     /// Absolute path to the indexed root directory
     #[serde(default)]
     pub root_path: Option<String>,
-    /// The code chunk content
+    /// The content chunk
     pub content: String,
     /// Combined similarity score (0.0 to 1.0)
     pub score: f32,
@@ -112,7 +55,7 @@ pub struct SearchResult {
     pub start_line: usize,
     /// Ending line number in the file
     pub end_line: usize,
-    /// Programming language detected
+    /// Language or content type
     pub language: String,
     /// Optional project name for multi-project support
     pub project: Option<String>,
@@ -137,18 +80,18 @@ pub struct QueryResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StatisticsRequest {}
 
-/// Statistics about the indexed codebase
+/// Statistics about the indexed content
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StatisticsResponse {
     /// Total number of indexed files
     pub total_files: usize,
-    /// Total number of code chunks
+    /// Total number of chunks
     pub total_chunks: usize,
     /// Total number of embeddings
     pub total_embeddings: usize,
     /// Size of the vector database in bytes
     pub database_size_bytes: u64,
-    /// Breakdown by programming language
+    /// Breakdown by language/type
     pub language_breakdown: Vec<LanguageStats>,
 }
 
@@ -170,313 +113,6 @@ pub struct ClearResponse {
     pub success: bool,
     /// Optional message
     pub message: String,
-}
-
-/// Request for incremental update
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IncrementalUpdateRequest {
-    /// Path to the codebase directory
-    pub path: String,
-    /// Optional project name
-    #[serde(default)]
-    pub project: Option<String>,
-    /// Optional glob patterns to include
-    #[serde(default)]
-    pub include_patterns: Vec<String>,
-    /// Optional glob patterns to exclude
-    #[serde(default)]
-    pub exclude_patterns: Vec<String>,
-}
-
-/// Response from incremental update
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IncrementalUpdateResponse {
-    /// Number of files added
-    pub files_added: usize,
-    /// Number of files updated
-    pub files_updated: usize,
-    /// Number of files removed
-    pub files_removed: usize,
-    /// Number of chunks created/updated
-    pub chunks_modified: usize,
-    /// Time taken in milliseconds
-    pub duration_ms: u64,
-}
-
-/// Request to search with file type filters
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AdvancedSearchRequest {
-    /// The search query
-    pub query: String,
-    /// Optional path to filter by specific indexed codebase
-    #[serde(default)]
-    pub path: Option<String>,
-    /// Optional project name to filter by
-    #[serde(default)]
-    pub project: Option<String>,
-    /// Number of results to return
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-    /// Minimum similarity score
-    #[serde(default = "default_min_score")]
-    pub min_score: f32,
-    /// Filter by file extensions (e.g., ["rs", "toml"])
-    #[serde(default)]
-    pub file_extensions: Vec<String>,
-    /// Filter by programming languages
-    #[serde(default)]
-    pub languages: Vec<String>,
-    /// Filter by file path patterns (glob)
-    #[serde(default)]
-    pub path_patterns: Vec<String>,
-}
-
-/// Request to search git history
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SearchGitHistoryRequest {
-    /// The search query
-    pub query: String,
-    /// Path to the codebase (will discover git repo)
-    #[serde(default = "default_git_path")]
-    pub path: String,
-    /// Optional project name
-    #[serde(default)]
-    pub project: Option<String>,
-    /// Optional branch name (default: current branch)
-    #[serde(default)]
-    pub branch: Option<String>,
-    /// Maximum number of commits to index/search (default: 10)
-    #[serde(default = "default_max_commits")]
-    pub max_commits: usize,
-    /// Number of results to return (default: 10)
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-    /// Minimum similarity score (0.0 to 1.0, default: 0.7)
-    #[serde(default = "default_min_score")]
-    pub min_score: f32,
-    /// Filter by commit author (optional regex pattern)
-    #[serde(default)]
-    pub author: Option<String>,
-    /// Filter by commits since this date (ISO 8601 or Unix timestamp)
-    #[serde(default)]
-    pub since: Option<String>,
-    /// Filter by commits until this date (ISO 8601 or Unix timestamp)
-    #[serde(default)]
-    pub until: Option<String>,
-    /// Filter by file path pattern (optional regex)
-    #[serde(default)]
-    pub file_pattern: Option<String>,
-}
-
-fn default_git_path() -> String {
-    ".".to_string()
-}
-
-fn default_max_commits() -> usize {
-    10
-}
-
-/// A single git search result
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct GitSearchResult {
-    /// Git commit hash (SHA)
-    pub commit_hash: String,
-    /// Commit message
-    pub commit_message: String,
-    /// Author name
-    pub author: String,
-    /// Author email
-    pub author_email: String,
-    /// Commit date (Unix timestamp)
-    pub commit_date: i64,
-    /// Combined similarity score (0.0 to 1.0)
-    pub score: f32,
-    /// Vector similarity score
-    pub vector_score: f32,
-    /// Keyword match score (if hybrid search enabled)
-    pub keyword_score: Option<f32>,
-    /// Files changed in this commit
-    pub files_changed: Vec<String>,
-    /// Diff snippet (first ~500 characters)
-    pub diff_snippet: String,
-}
-
-/// Response from git history search
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SearchGitHistoryResponse {
-    /// List of matching commits, ordered by relevance
-    pub results: Vec<GitSearchResult>,
-    /// Number of commits indexed during this search
-    pub commits_indexed: usize,
-    /// Total commits in cache for this repo
-    pub total_cached_commits: usize,
-    /// Time taken in milliseconds
-    pub duration_ms: u64,
-}
-
-// ============================================================================
-// Code Relations Types (find_definition, find_references, get_call_graph)
-// ============================================================================
-
-/// Request to find the definition of a symbol at a given location
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct FindDefinitionRequest {
-    /// File path (relative or absolute)
-    pub file_path: String,
-    /// Line number (1-based)
-    pub line: usize,
-    /// Column number (0-based)
-    pub column: usize,
-    /// Optional project name to filter by
-    #[serde(default)]
-    pub project: Option<String>,
-}
-
-impl FindDefinitionRequest {
-    /// Validate the find definition request
-    pub fn validate(&self) -> Result<(), String> {
-        if self.file_path.is_empty() {
-            return Err("file_path cannot be empty".to_string());
-        }
-        if self.line == 0 {
-            return Err("line must be 1-based (cannot be 0)".to_string());
-        }
-        Ok(())
-    }
-}
-
-/// Response from find_definition
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct FindDefinitionResponse {
-    /// The found definition, if any
-    pub definition: Option<crate::relations::DefinitionResult>,
-    /// Precision level of the result
-    pub precision: String,
-    /// Time taken in milliseconds
-    pub duration_ms: u64,
-}
-
-/// Request to find all references to a symbol
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct FindReferencesRequest {
-    /// File path (relative or absolute)
-    pub file_path: String,
-    /// Line number (1-based)
-    pub line: usize,
-    /// Column number (0-based)
-    pub column: usize,
-    /// Maximum number of references to return
-    #[serde(default = "default_references_limit")]
-    pub limit: usize,
-    /// Optional project name to filter by
-    #[serde(default)]
-    pub project: Option<String>,
-    /// Include the definition itself in results
-    #[serde(default = "default_include_definition")]
-    pub include_definition: bool,
-}
-
-fn default_references_limit() -> usize {
-    100
-}
-
-fn default_include_definition() -> bool {
-    true
-}
-
-impl FindReferencesRequest {
-    /// Validate the find references request
-    pub fn validate(&self) -> Result<(), String> {
-        if self.file_path.is_empty() {
-            return Err("file_path cannot be empty".to_string());
-        }
-        if self.line == 0 {
-            return Err("line must be 1-based (cannot be 0)".to_string());
-        }
-        const MAX_LIMIT: usize = 10000;
-        if self.limit > MAX_LIMIT {
-            return Err(format!("limit too large: {} (max: {})", self.limit, MAX_LIMIT));
-        }
-        Ok(())
-    }
-}
-
-/// Response from find_references
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct FindReferencesResponse {
-    /// The symbol being referenced
-    pub symbol_name: Option<String>,
-    /// List of found references
-    pub references: Vec<crate::relations::ReferenceResult>,
-    /// Total count (may be higher than returned if limit applied)
-    pub total_count: usize,
-    /// Precision level of the results
-    pub precision: String,
-    /// Time taken in milliseconds
-    pub duration_ms: u64,
-}
-
-/// Request to get call graph for a function
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct GetCallGraphRequest {
-    /// File path (relative or absolute)
-    pub file_path: String,
-    /// Line number (1-based)
-    pub line: usize,
-    /// Column number (0-based)
-    pub column: usize,
-    /// Maximum depth to traverse (default: 2)
-    #[serde(default = "default_call_graph_depth")]
-    pub depth: usize,
-    /// Optional project name to filter by
-    #[serde(default)]
-    pub project: Option<String>,
-    /// Include callers (functions that call this function)
-    #[serde(default = "default_true")]
-    pub include_callers: bool,
-    /// Include callees (functions this function calls)
-    #[serde(default = "default_true")]
-    pub include_callees: bool,
-}
-
-fn default_call_graph_depth() -> usize {
-    2
-}
-
-fn default_true() -> bool {
-    true
-}
-
-impl GetCallGraphRequest {
-    /// Validate the get call graph request
-    pub fn validate(&self) -> Result<(), String> {
-        if self.file_path.is_empty() {
-            return Err("file_path cannot be empty".to_string());
-        }
-        if self.line == 0 {
-            return Err("line must be 1-based (cannot be 0)".to_string());
-        }
-        const MAX_DEPTH: usize = 10;
-        if self.depth > MAX_DEPTH {
-            return Err(format!("depth too large: {} (max: {})", self.depth, MAX_DEPTH));
-        }
-        Ok(())
-    }
-}
-
-/// Response from get_call_graph
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct GetCallGraphResponse {
-    /// The root symbol (function/method at the requested location)
-    pub root_symbol: Option<crate::relations::SymbolInfo>,
-    /// Functions/methods that call this symbol (incoming calls)
-    pub callers: Vec<crate::relations::CallGraphNode>,
-    /// Functions/methods called by this symbol (outgoing calls)
-    pub callees: Vec<crate::relations::CallGraphNode>,
-    /// Precision level of the results
-    pub precision: String,
-    /// Time taken in milliseconds
-    pub duration_ms: u64,
 }
 
 /// Request to search papers by keyword and filters
@@ -543,7 +179,7 @@ pub struct SearchPapersResponse {
     pub duration_ms: u64,
 }
 
-/// Metadata stored with each code chunk
+/// Metadata stored with each chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {
     /// File path relative to indexed root
@@ -557,7 +193,7 @@ pub struct ChunkMetadata {
     pub start_line: usize,
     /// Ending line number
     pub end_line: usize,
-    /// Programming language
+    /// Language or content type
     pub language: Option<String>,
     /// File extension
     pub extension: Option<String>,
@@ -567,70 +203,14 @@ pub struct ChunkMetadata {
     pub indexed_at: i64,
 }
 
-/// Input validation for request types
-///
-/// These functions validate user inputs to prevent security issues and ensure
-/// reasonable resource usage.
-impl IndexRequest {
-    /// Validate the index request
-    pub fn validate(&self) -> Result<(), String> {
-        // Validate path exists and is a directory
-        let path = std::path::Path::new(&self.path);
-        if !path.exists() {
-            return Err(format!("Path does not exist: {}", self.path));
-        }
-        if !path.is_dir() {
-            return Err(format!("Path is not a directory: {}", self.path));
-        }
-
-        // Canonicalize to prevent path traversal attacks
-        let canonical = path
-            .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
-
-        // Check that path doesn't try to escape (basic security check)
-        if !canonical.starts_with(
-            std::env::current_dir()
-                .unwrap_or_default()
-                .parent()
-                .unwrap_or(std::path::Path::new("/")),
-        ) {
-            // Allow any absolute path, this check is just to catch obvious traversal attempts
-        }
-
-        // Validate max_file_size is reasonable (max 100MB)
-        const MAX_FILE_SIZE_LIMIT: usize = 100_000_000; // 100MB
-        if self.max_file_size > MAX_FILE_SIZE_LIMIT {
-            return Err(format!(
-                "max_file_size too large: {} bytes (max: {} bytes)",
-                self.max_file_size, MAX_FILE_SIZE_LIMIT
-            ));
-        }
-
-        // Validate project name if provided
-        if let Some(ref project) = self.project {
-            if project.is_empty() {
-                return Err("project name cannot be empty".to_string());
-            }
-            if project.len() > 256 {
-                return Err("project name too long (max 256 characters)".to_string());
-            }
-        }
-
-        Ok(())
-    }
-}
-
 impl QueryRequest {
     /// Validate the query request
     pub fn validate(&self) -> Result<(), String> {
-        // Validate query is not empty
         if self.query.trim().is_empty() {
             return Err("query cannot be empty".to_string());
         }
 
-        // Validate query length is reasonable (max 10KB)
-        const MAX_QUERY_LENGTH: usize = 10_240; // 10KB
+        const MAX_QUERY_LENGTH: usize = 10_240;
         if self.query.len() > MAX_QUERY_LENGTH {
             return Err(format!(
                 "query too long: {} bytes (max: {} bytes)",
@@ -639,7 +219,6 @@ impl QueryRequest {
             ));
         }
 
-        // Validate min_score is in valid range [0.0, 1.0]
         if !(0.0..=1.0).contains(&self.min_score) {
             return Err(format!(
                 "min_score must be between 0.0 and 1.0, got: {}",
@@ -647,7 +226,6 @@ impl QueryRequest {
             ));
         }
 
-        // Validate limit is reasonable (max 1000)
         const MAX_LIMIT: usize = 1000;
         if self.limit > MAX_LIMIT {
             return Err(format!(
@@ -656,114 +234,6 @@ impl QueryRequest {
             ));
         }
 
-        // Validate project name if provided
-        if let Some(ref project) = self.project {
-            if project.is_empty() {
-                return Err("project name cannot be empty".to_string());
-            }
-            if project.len() > 256 {
-                return Err("project name too long (max 256 characters)".to_string());
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl AdvancedSearchRequest {
-    /// Validate the advanced search request
-    pub fn validate(&self) -> Result<(), String> {
-        // Reuse QueryRequest validation logic
-        let query_req = QueryRequest {
-            query: self.query.clone(),
-            path: None,
-            project: self.project.clone(),
-            limit: self.limit,
-            min_score: self.min_score,
-            hybrid: true,
-        };
-        query_req.validate()?;
-
-        // Additional validation for file extensions
-        for ext in &self.file_extensions {
-            if ext.is_empty() {
-                return Err("file extension cannot be empty".to_string());
-            }
-            if ext.len() > 20 {
-                return Err(format!(
-                    "file extension too long: {} (max 20 characters)",
-                    ext
-                ));
-            }
-        }
-
-        // Validate languages
-        for lang in &self.languages {
-            if lang.is_empty() {
-                return Err("language name cannot be empty".to_string());
-            }
-            if lang.len() > 50 {
-                return Err(format!(
-                    "language name too long: {} (max 50 characters)",
-                    lang
-                ));
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl SearchGitHistoryRequest {
-    /// Validate the git history search request
-    pub fn validate(&self) -> Result<(), String> {
-        // Validate query
-        if self.query.trim().is_empty() {
-            return Err("query cannot be empty".to_string());
-        }
-
-        const MAX_QUERY_LENGTH: usize = 10_240; // 10KB
-        if self.query.len() > MAX_QUERY_LENGTH {
-            return Err(format!(
-                "query too long: {} bytes (max: {} bytes)",
-                self.query.len(),
-                MAX_QUERY_LENGTH
-            ));
-        }
-
-        // Validate path
-        let path = std::path::Path::new(&self.path);
-        if !path.exists() {
-            return Err(format!("Path does not exist: {}", self.path));
-        }
-
-        // Validate min_score range
-        if !(0.0..=1.0).contains(&self.min_score) {
-            return Err(format!(
-                "min_score must be between 0.0 and 1.0, got: {}",
-                self.min_score
-            ));
-        }
-
-        // Validate limit
-        const MAX_LIMIT: usize = 1000;
-        if self.limit > MAX_LIMIT {
-            return Err(format!(
-                "limit too large: {} (max: {})",
-                self.limit, MAX_LIMIT
-            ));
-        }
-
-        // Validate max_commits
-        const MAX_COMMITS_LIMIT: usize = 10000;
-        if self.max_commits > MAX_COMMITS_LIMIT {
-            return Err(format!(
-                "max_commits too large: {} (max: {})",
-                self.max_commits, MAX_COMMITS_LIMIT
-            ));
-        }
-
-        // Validate project name if provided
         if let Some(ref project) = self.project {
             if project.is_empty() {
                 return Err("project name cannot be empty".to_string());
@@ -778,4 +248,151 @@ impl SearchGitHistoryRequest {
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_query_request_defaults() {
+        let req: QueryRequest = serde_json::from_str(r#"{"query": "test"}"#).unwrap();
+        assert_eq!(req.limit, 10);
+        assert!((req.min_score - 0.7).abs() < f32::EPSILON);
+        assert!(req.hybrid);
+    }
+
+    #[test]
+    fn test_query_request_validate_empty_query() {
+        let req = QueryRequest {
+            query: "".to_string(),
+            path: None,
+            project: None,
+            limit: 10,
+            min_score: 0.7,
+            hybrid: true,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn test_query_request_validate_valid() {
+        let req = QueryRequest {
+            query: "test query".to_string(),
+            path: None,
+            project: None,
+            limit: 10,
+            min_score: 0.7,
+            hybrid: true,
+        };
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn test_query_request_validate_min_score_out_of_range() {
+        let req = QueryRequest {
+            query: "test".to_string(),
+            path: None,
+            project: None,
+            limit: 10,
+            min_score: 1.5,
+            hybrid: true,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn test_query_request_validate_limit_too_large() {
+        let req = QueryRequest {
+            query: "test".to_string(),
+            path: None,
+            project: None,
+            limit: 5000,
+            min_score: 0.7,
+            hybrid: true,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn test_search_result_creation() {
+        let result = SearchResult {
+            file_path: "test.md".to_string(),
+            root_path: Some("papers".to_string()),
+            content: "test content".to_string(),
+            score: 0.95,
+            vector_score: 0.90,
+            keyword_score: Some(0.85),
+            start_line: 1,
+            end_line: 10,
+            language: "Markdown".to_string(),
+            project: Some("test-project".to_string()),
+        };
+        assert_eq!(result.file_path, "test.md");
+    }
+
+    #[test]
+    fn test_chunk_metadata_creation() {
+        let meta = ChunkMetadata {
+            file_path: "test.md".to_string(),
+            root_path: Some("papers".to_string()),
+            project: Some("test-project".to_string()),
+            start_line: 1,
+            end_line: 50,
+            language: Some("Markdown".to_string()),
+            extension: Some("md".to_string()),
+            file_hash: "abc123".to_string(),
+            indexed_at: 1234567890,
+        };
+        assert_eq!(meta.file_path, "test.md");
+    }
+
+    #[test]
+    fn test_clear_response() {
+        let response = ClearResponse {
+            success: true,
+            message: "Cleared".to_string(),
+        };
+        assert!(response.success);
+    }
+
+    #[test]
+    fn test_statistics_response() {
+        let response = StatisticsResponse {
+            total_files: 10,
+            total_chunks: 100,
+            total_embeddings: 100,
+            database_size_bytes: 1024,
+            language_breakdown: vec![LanguageStats {
+                language: "Markdown".to_string(),
+                file_count: 10,
+                chunk_count: 100,
+            }],
+        };
+        assert_eq!(response.total_files, 10);
+    }
+
+    #[test]
+    fn test_query_response_serialization() {
+        let response = QueryResponse {
+            results: vec![],
+            duration_ms: 42,
+            threshold_used: 0.7,
+            threshold_lowered: false,
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: QueryResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.duration_ms, 42);
+    }
+
+    #[test]
+    fn test_papers_request_serialization() {
+        let req = SearchPapersRequest {
+            query: Some("neural".to_string()),
+            status: Some("active".to_string()),
+            paper_type: None,
+            limit: 20,
+            offset: 0,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let deserialized: SearchPapersRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.query, Some("neural".to_string()));
+    }
+}
