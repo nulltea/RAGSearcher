@@ -51,3 +51,18 @@ Search algorithms extracted from papers by keyword, status, tags, or paper.
 | `offset` | int | 0 | Pagination offset |
 
 **Returns:** Algorithms with id, paper_id, paper_title, name, description, steps, inputs, outputs, preconditions, complexity, mathematical_notation, pseudocode, tags, confidence, status.
+
+## `/rag-searcher:index`
+
+Upload and index a paper from a local file path or URL. Extracts text from PDF, chunks it, generates embeddings, and stores in the vector database.
+
+**Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `file_path` | string | — | Absolute path to a local PDF or text file |
+| `url` | string | — | URL to download a PDF from |
+
+Either `file_path` or `url` must be provided. Title and authors are automatically extracted from PDF metadata.
+
+**Returns:** Paper ID, title, chunk count, status, and duration.

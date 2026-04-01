@@ -262,6 +262,48 @@ pub struct SearchAlgorithmsResponse {
     pub duration_ms: u64,
 }
 
+fn default_paper_type() -> String {
+    "research_paper".to_string()
+}
+
+/// Request to index a paper via MCP (from file path or URL)
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct IndexPaperRequest {
+    /// Absolute path to a local PDF or text file
+    #[serde(default)]
+    pub file_path: Option<String>,
+    /// URL to download a PDF from
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Paper title (auto-detected from PDF metadata if omitted)
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Comma-separated author names
+    #[serde(default)]
+    pub authors: Option<String>,
+    /// Source reference
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Paper type (default: "research_paper")
+    #[serde(default = "default_paper_type")]
+    pub paper_type: String,
+}
+
+/// Response from index_paper
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct IndexPaperResponse {
+    /// Unique paper ID
+    pub paper_id: String,
+    /// Paper title
+    pub title: String,
+    /// Number of chunks indexed
+    pub chunk_count: usize,
+    /// Paper status after indexing
+    pub status: String,
+    /// Time taken in milliseconds
+    pub duration_ms: u64,
+}
+
 /// Metadata stored with each chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {

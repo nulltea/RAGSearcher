@@ -1,7 +1,11 @@
 use crate::client::RagClient;
+use crate::embedding::EmbeddingProvider;
+use crate::indexer::{ChunkInput, extract_pdf};
 use crate::metadata::MetadataStore;
+use crate::metadata::models::{PaperCreate, PaperStatus};
 use crate::paths::PlatformPaths;
 use crate::types::*;
+use crate::vector_db::VectorDatabase;
 
 use anyhow::{Context, Result};
 use rmcp::{
@@ -12,12 +16,14 @@ use rmcp::{
     service::RequestContext,
     tool, tool_handler, tool_router,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct RagMcpServer {
     client: Arc<RagClient>,
     metadata: Arc<MetadataStore>,
+    upload_dir: PathBuf,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
 }
@@ -26,11 +32,14 @@ impl RagMcpServer {
     /// Create a new RAG MCP server with default configuration
     pub async fn new() -> Result<Self> {
         let client = RagClient::new().await?;
-        let db_path = PlatformPaths::project_data_dir().join("papers.db");
+        let data_dir = PlatformPaths::project_data_dir();
+        let db_path = data_dir.join("papers.db");
+        let upload_dir = data_dir.join("uploads");
         let metadata = MetadataStore::new(&db_path)?;
         Ok(Self {
             client: Arc::new(client),
             metadata: Arc::new(metadata),
+            upload_dir,
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         })
@@ -38,11 +47,14 @@ impl RagMcpServer {
 
     /// Create a new RAG MCP server with an existing client
     pub fn with_client(client: Arc<RagClient>) -> Result<Self> {
-        let db_path = PlatformPaths::project_data_dir().join("papers.db");
+        let data_dir = PlatformPaths::project_data_dir();
+        let db_path = data_dir.join("papers.db");
+        let upload_dir = data_dir.join("uploads");
         let metadata = MetadataStore::new(&db_path)?;
         Ok(Self {
             client,
             metadata: Arc::new(metadata),
+            upload_dir,
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         })
@@ -60,10 +72,11 @@ impl RagMcpServer {
     }
 
     /// Create a new RAG MCP server with an existing client and metadata store
-    pub fn with_client_and_metadata(client: Arc<RagClient>, metadata: Arc<MetadataStore>) -> Result<Self> {
+    pub fn with_client_and_metadata(client: Arc<RagClient>, metadata: Arc<MetadataStore>, upload_dir: PathBuf) -> Result<Self> {
         Ok(Self {
             client,
             metadata,
+            upload_dir,
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         })
@@ -205,6 +218,168 @@ impl RagMcpServer {
 
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
+
+    #[tool(description = "Index a paper from a local file path or URL. Extracts text, chunks it, generates embeddings, and stores in the vector database for semantic search.")]
+    async fn index_paper(
+        &self,
+        Parameters(req): Parameters<IndexPaperRequest>,
+    ) -> Result<String, String> {
+        let start = std::time::Instant::now();
+        let paper_id = uuid::Uuid::new_v4().to_string();
+
+        // Ensure upload dir exists
+        tokio::fs::create_dir_all(&self.upload_dir)
+            .await
+            .map_err(|e| format!("Failed to create upload directory: {}", e))?;
+
+        // Read file content
+        let (bytes, original_filename, source) = if let Some(ref path) = req.file_path {
+            let path = std::path::Path::new(path);
+            if !path.exists() {
+                return Err(format!("File not found: {}", path.display()));
+            }
+            let bytes = tokio::fs::read(path)
+                .await
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let filename = path.file_name().map(|f| f.to_string_lossy().to_string());
+            (bytes, filename, req.source.clone())
+        } else if let Some(ref url) = req.url {
+            let response = reqwest::get(url)
+                .await
+                .map_err(|e| format!("Failed to download URL: {}", e))?;
+            if !response.status().is_success() {
+                return Err(format!("URL returned status {}", response.status()));
+            }
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| format!("Failed to read response body: {}", e))?
+                .to_vec();
+            let filename = url.rsplit('/').next()
+                .unwrap_or("download.pdf")
+                .split('?').next()
+                .unwrap_or("download.pdf")
+                .to_string();
+            (bytes, Some(filename), req.source.clone().or_else(|| Some(url.clone())))
+        } else {
+            return Err("Either 'file_path' or 'url' is required".to_string());
+        };
+
+        // Determine extension and extract text
+        let ext = original_filename.as_deref()
+            .and_then(|f| f.rsplit('.').next())
+            .unwrap_or("pdf");
+
+        // Save file to upload dir
+        let saved_path = self.upload_dir.join(format!("{}.{}", paper_id, ext));
+        tokio::fs::write(&saved_path, &bytes)
+            .await
+            .map_err(|e| format!("Failed to save file: {}", e))?;
+
+        let stored_file_path = saved_path.canonicalize().ok().map(|p| p.to_string_lossy().to_string());
+
+        let (content, pdf_title) = if ext.eq_ignore_ascii_case("pdf") {
+            let path = saved_path.clone();
+            let extraction = tokio::task::spawn_blocking(move || extract_pdf(&path))
+                .await
+                .map_err(|e| format!("Task join error: {}", e))?
+                .map_err(|e| format!("PDF extraction failed: {:#}", e))?;
+            (extraction.text, extraction.title)
+        } else {
+            let text = String::from_utf8(bytes)
+                .map_err(|_| "File is not valid UTF-8 text".to_string())?;
+            (text, None)
+        };
+
+        // Resolve title
+        let title = req.title.or(pdf_title).unwrap_or_else(|| {
+            original_filename.as_deref()
+                .and_then(|f| f.rsplit('.').nth(1).map(|s| s.to_string()))
+                .unwrap_or_else(|| "Untitled Paper".to_string())
+        });
+
+        let authors: Vec<String> = req.authors
+            .map(|a| a.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+            .unwrap_or_default();
+
+        // Create paper metadata record
+        let create = PaperCreate {
+            title: title.clone(),
+            authors,
+            source,
+            published_date: None,
+            paper_type: req.paper_type.clone(),
+            original_filename,
+            file_path: stored_file_path,
+        };
+
+        self.metadata
+            .create_paper(&paper_id, create)
+            .await
+            .map_err(|e| format!("Failed to create paper record: {:#}", e))?;
+
+        // Save extracted text for later pattern/algorithm extraction
+        let text_path = self.upload_dir.join(format!("{}.txt", paper_id));
+        tokio::fs::write(&text_path, &content)
+            .await
+            .map_err(|e| format!("Failed to save text content: {}", e))?;
+
+        // Chunk the content
+        let chunk_input = ChunkInput {
+            relative_path: format!("papers/{}", paper_id),
+            root_path: "papers".to_string(),
+            project: Some(paper_id.clone()),
+            extension: Some("md".to_string()),
+            language: Some("Markdown".to_string()),
+            content: content.clone(),
+            hash: {
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                hasher.update(content.as_bytes());
+                format!("{:x}", hasher.finalize())
+            },
+        };
+
+        let chunks = self.client.chunker.chunk_file(&chunk_input);
+        let chunk_count = if chunks.is_empty() {
+            self.metadata
+                .update_paper_status(&paper_id, PaperStatus::Active, 0)
+                .await
+                .map_err(|e| format!("{:#}", e))?;
+            0
+        } else {
+            let texts: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
+            let metadata: Vec<ChunkMetadata> = chunks.iter().map(|c| c.metadata.clone()).collect();
+            let contents: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
+
+            let provider = self.client.embedding_provider.clone();
+            let embeddings = tokio::task::spawn_blocking(move || provider.embed_batch(texts))
+                .await
+                .map_err(|e| format!("Embedding task error: {}", e))?
+                .map_err(|e| format!("Embedding generation failed: {:#}", e))?;
+
+            let count = self.client.vector_db
+                .store_embeddings(embeddings, metadata, contents, "papers")
+                .await
+                .map_err(|e| format!("Failed to store embeddings: {:#}", e))?;
+
+            self.metadata
+                .update_paper_status(&paper_id, PaperStatus::Active, count)
+                .await
+                .map_err(|e| format!("{:#}", e))?;
+            count
+        };
+
+        let response = IndexPaperResponse {
+            paper_id,
+            title,
+            chunk_count,
+            status: PaperStatus::Active.to_string(),
+            duration_ms: start.elapsed().as_millis() as u64,
+        };
+
+        serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
+    }
 }
 
 // Prompts for slash commands
@@ -242,6 +417,29 @@ impl RagMcpServer {
                 "Please list all available papers in the knowledge base.".to_string()
             } else {
                 format!("Please search for papers matching: {}", query)
+            },
+        )])
+    }
+
+    #[prompt(
+        name = "index",
+        description = "Index a paper from a local file path or URL"
+    )]
+    async fn index_prompt(
+        &self,
+        Parameters(args): Parameters<serde_json::Value>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let path_or_url = args
+            .get("path_or_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            if path_or_url.is_empty() {
+                "Please index a paper. Provide a file path or URL.".to_string()
+            } else {
+                format!("Please index this paper: {}", path_or_url)
             },
         )])
     }
@@ -288,7 +486,8 @@ impl ServerHandler for RagMcpServer {
                 "RAG-based paper library with semantic search. \
                 Use search to search paper content semantically, \
                 search_papers to find papers by title/authors/status, \
-                search_algorithms to find algorithms across papers by keyword/tags."
+                search_algorithms to find algorithms across papers by keyword/tags, \
+                index_paper to upload and index a paper from a file path or URL."
                     .into(),
             ),
         }

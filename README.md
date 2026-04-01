@@ -75,8 +75,9 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 | `search` | Semantic search across paper content |
 | `search_papers` | Search papers by title, authors, status, type |
 | `search_algorithms` | Search algorithms across papers by keyword, tags, status |
+| `index_paper` | Upload and index a paper from a local file path or URL |
 
-Slash commands: `/rag-searcher:search`, `/rag-searcher:papers`, `/rag-searcher:algorithms`
+Slash commands: `/rag-searcher:search`, `/rag-searcher:papers`, `/rag-searcher:algorithms`, `/rag-searcher:index`
 
 ### Usage Examples
 
