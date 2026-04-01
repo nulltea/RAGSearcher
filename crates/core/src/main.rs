@@ -38,11 +38,18 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt::init();
-
     // Parse CLI arguments
     let cli = Cli::parse();
+
+    // Initialize tracing — MCP serve mode MUST use stderr (stdout is JSON-RPC channel)
+    let use_stderr = matches!(cli.command, Some(Commands::Serve) | None);
+    if use_stderr {
+        tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .init();
+    } else {
+        tracing_subscriber::fmt::init();
+    }
 
     // Handle commands
     match cli.command {

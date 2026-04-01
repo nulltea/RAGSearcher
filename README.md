@@ -76,6 +76,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 | `search_papers` | Search papers by title, authors, status, type |
 | `search_algorithms` | Search algorithms across papers by keyword, tags, status |
 | `index_paper` | Upload and index a paper from a local file path or URL |
+| `extract_algorithms` | Run 3-pass AI extraction pipeline on an indexed paper |
 
 Slash commands: `/rag-searcher:search`, `/rag-searcher:papers`, `/rag-searcher:algorithms`, `/rag-searcher:index`
 
@@ -102,6 +103,45 @@ Once the MCP server is added, you can reference your paper library directly in C
 ```
 
 Claude Code will automatically call `search` and `search_papers` to retrieve relevant paper chunks, then use them as context for answering questions or writing code.
+
+## Zotero 7 Plugin
+
+Upload papers and extract algorithms directly from your Zotero library. The plugin communicates with `rag-searcher` via MCP over stdio — no web server needed.
+
+### Prerequisites
+
+- Zotero 7+
+- `rag-searcher` binary installed (see [MCP Server > Install](#install) above)
+- Node.js (to build the plugin)
+
+### Build
+
+```bash
+cd zotero-plugin
+npm install
+npm run build
+```
+
+This produces `build/zotero-rag-library-<version>.xpi`.
+
+### Install in Zotero
+
+1. Open Zotero 7
+2. Go to **Tools > Plugins** (or **Add-ons**)
+3. Click the gear icon > **Install Add-on From File...**
+4. Select the `.xpi` file from `zotero-plugin/build/`
+
+### Usage
+
+Right-click any item in your Zotero library:
+
+- **Upload to RAG Library** — Reads the PDF attachment, extracts text, chunks and embeds it locally. Stores a `RAG-ID` in the item's Extra field for future operations.
+- **Extract Algorithms** — Runs the 3-pass AI pipeline (evidence inventory, algorithm definitions, verification) on the uploaded paper. Opens a review dialog showing extracted algorithms with collapsible steps, I/O, pseudocode, and approve/reject buttons. Requires Claude CLI installed.
+- **View Algorithms** — Re-opens the review dialog for previously extracted algorithms.
+
+### Configuration
+
+The plugin auto-detects `rag-searcher` from your PATH. To use a custom binary path, set it in **Zotero > Settings > RAG Library > Binary Path**.
 
 ## Desktop App
 
@@ -164,6 +204,7 @@ Environment overrides: `PROJECT_RAG_DB_BACKEND`, `PROJECT_RAG_LANCEDB_PATH`, `PR
 crates/core/       Rust library + CLI (MCP server, web server, embedding, search)
 crates/tauri-app/  Tauri 2 desktop app wrapper
 frontend/          Next.js static export (paper library UI)
+zotero-plugin/     Zotero 7 Bootstrap extension (TypeScript, MCP over stdio)
 ```
 
 ## Development

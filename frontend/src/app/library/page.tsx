@@ -17,7 +17,7 @@ import {
 } from "@/components/library";
 import { deletePaper, extractAlgorithms, extractPatterns, listPapers } from "@/lib/api";
 import type { PaperResponse } from "@/types";
-import { AlertCircle, Lightbulb, Code2, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Lightbulb, Code2, Loader2, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -109,6 +109,18 @@ function LibraryContent() {
     loadPapers(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.status, filters.type]);
+
+  // Auto-refresh when page becomes visible (e.g. after uploading via Zotero/MCP)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadPapers(true);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Debounced search
   useEffect(() => {
@@ -216,12 +228,22 @@ function LibraryContent() {
             Browse and manage your research papers and patterns.
           </p>
         </div>
-        <Link href="/upload">
-          <Button>
-            <Plus className="h-4 w-4" />
-            Upload Paper
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadPapers(true)}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
-        </Link>
+          <Link href="/upload">
+            <Button>
+              <Plus className="h-4 w-4" />
+              Upload Paper
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}

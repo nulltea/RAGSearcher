@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<!DOCTYPE window>
+<window
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  title="RAG Library Settings"
+>
+<vbox flex="1" style="padding: 16px;">
+  <label value="RAG Searcher Binary Path" style="font-weight: bold; margin-bottom: 4px;" />
+  <html:input
+    id="pref-binary-path"
+    type="text"
+    placeholder="Auto-detect from PATH (default: rag-searcher)"
+    preference="extensions.zotero.zoterorag.binaryPath"
+    style="width: 100%; padding: 6px; margin-bottom: 12px;"
+  />
+  <label value="Leave empty to auto-detect from PATH." style="font-size: 12px; color: #666;" />
+</vbox>
+</window>

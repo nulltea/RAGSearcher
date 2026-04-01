@@ -1,8 +1,9 @@
 use crate::client::RagClient;
 use crate::embedding::EmbeddingProvider;
+use crate::extraction::AlgorithmExtractor;
 use crate::indexer::{ChunkInput, extract_pdf};
 use crate::metadata::MetadataStore;
-use crate::metadata::models::{PaperCreate, PaperStatus};
+use crate::metadata::models::{AlgorithmIORow, AlgorithmStepRow, PaperCreate, PaperStatus, PatternStatus};
 use crate::paths::PlatformPaths;
 use crate::types::*;
 use crate::vector_db::VectorDatabase;
@@ -24,6 +25,7 @@ pub struct RagMcpServer {
     client: Arc<RagClient>,
     metadata: Arc<MetadataStore>,
     upload_dir: PathBuf,
+    algorithm_extractor: Arc<AlgorithmExtractor>,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
 }
@@ -40,6 +42,7 @@ impl RagMcpServer {
             client: Arc::new(client),
             metadata: Arc::new(metadata),
             upload_dir,
+            algorithm_extractor: Arc::new(AlgorithmExtractor::new()),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         })
@@ -55,6 +58,7 @@ impl RagMcpServer {
             client,
             metadata: Arc::new(metadata),
             upload_dir,
+            algorithm_extractor: Arc::new(AlgorithmExtractor::new()),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         })
@@ -77,6 +81,7 @@ impl RagMcpServer {
             client,
             metadata,
             upload_dir,
+            algorithm_extractor: Arc::new(AlgorithmExtractor::new()),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         })
@@ -380,6 +385,177 @@ impl RagMcpServer {
 
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
+
+    #[tool(description = "Extract algorithms from an indexed paper using a 3-pass AI pipeline (evidence inventory → algorithm definitions → verification). The paper must be indexed first via index_paper. Takes 30-120 seconds depending on paper length.")]
+    async fn extract_algorithms(
+        &self,
+        Parameters(req): Parameters<ExtractAlgorithmsRequest>,
+    ) -> Result<String, String> {
+        let start = std::time::Instant::now();
+
+        // Verify paper exists
+        let paper = self
+            .metadata
+            .get_paper(&req.paper_id)
+            .await
+            .map_err(|e| format!("{:#}", e))?
+            .ok_or_else(|| format!("Paper '{}' not found", req.paper_id))?;
+
+        // Load extracted text
+        let text_path = self.upload_dir.join(format!("{}.txt", req.paper_id));
+        let text = tokio::fs::read_to_string(&text_path).await.map_err(|e| {
+            format!(
+                "Paper text not found at {}. Was the paper uploaded correctly? Error: {}",
+                text_path.display(),
+                e
+            )
+        })?;
+
+        // Run 3-pass extraction pipeline
+        let result = self
+            .algorithm_extractor
+            .extract_algorithms(&text, None)
+            .await
+            .map_err(|e| format!("Algorithm extraction failed: {:#}", e))?;
+
+        // Delete existing algorithms for this paper (re-extraction)
+        self.metadata
+            .delete_algorithms_by_paper(&req.paper_id)
+            .await
+            .map_err(|e| format!("{:#}", e))?;
+
+        // Save extracted algorithms to SQLite
+        for a in &result.algorithms {
+            let steps: Vec<AlgorithmStepRow> = a
+                .steps
+                .iter()
+                .map(|s| AlgorithmStepRow {
+                    number: s.number,
+                    action: s.action.clone(),
+                    details: s.details.clone(),
+                    math: s.math.clone(),
+                })
+                .collect();
+
+            let inputs: Vec<AlgorithmIORow> = a
+                .inputs
+                .iter()
+                .map(|io| AlgorithmIORow {
+                    name: io.name.clone(),
+                    io_type: io.io_type.clone(),
+                    description: io.description.clone(),
+                })
+                .collect();
+
+            let outputs: Vec<AlgorithmIORow> = a
+                .outputs
+                .iter()
+                .map(|io| AlgorithmIORow {
+                    name: io.name.clone(),
+                    io_type: io.io_type.clone(),
+                    description: io.description.clone(),
+                })
+                .collect();
+
+            self.metadata
+                .create_algorithm(
+                    &req.paper_id,
+                    &a.name,
+                    Some(&a.description),
+                    &steps,
+                    &inputs,
+                    &outputs,
+                    &a.preconditions,
+                    a.complexity.as_deref(),
+                    a.mathematical_notation.as_deref(),
+                    a.pseudocode.as_deref(),
+                    &a.tags,
+                    &a.evidence_ids,
+                    &a.confidence,
+                )
+                .await
+                .map_err(|e| format!("{:#}", e))?;
+        }
+
+        // Auto-approve all extracted algorithms and embed into LanceDB
+        let approved = self
+            .metadata
+            .list_algorithms(&req.paper_id, Some("pending"))
+            .await
+            .map_err(|e| format!("{:#}", e))?;
+
+        for alg in &approved {
+            self.metadata
+                .update_algorithm_status(&alg.id, PatternStatus::Approved)
+                .await
+                .map_err(|e| format!("{:#}", e))?;
+        }
+
+        if !approved.is_empty() {
+            let texts: Vec<String> = approved
+                .iter()
+                .map(|a| {
+                    let mut parts = vec![a.name.clone()];
+                    if let Some(ref d) = a.description {
+                        parts.push(d.clone());
+                    }
+                    for step in &a.steps {
+                        parts.push(format!("{}. {}", step.number, step.action));
+                    }
+                    parts.join(" | ")
+                })
+                .collect();
+
+            let metadata: Vec<ChunkMetadata> = approved
+                .iter()
+                .map(|a| ChunkMetadata {
+                    file_path: format!("algorithms/{}", a.paper_id),
+                    root_path: Some("algorithms".to_string()),
+                    start_line: 0,
+                    end_line: 0,
+                    language: Some("Algorithm".to_string()),
+                    extension: Some("algorithm".to_string()),
+                    file_hash: a.id.clone(),
+                    indexed_at: chrono::Utc::now().timestamp(),
+                    project: Some(format!("algorithm:{}", a.paper_id)),
+                })
+                .collect();
+
+            let contents: Vec<String> = texts.clone();
+            let provider = self.client.embedding_provider.clone();
+            let embeddings = tokio::task::spawn_blocking(move || provider.embed_batch(texts))
+                .await
+                .map_err(|e| format!("Embedding task error: {}", e))?
+                .map_err(|e| format!("Embedding failed: {:#}", e))?;
+
+            self.client
+                .vector_db
+                .store_embeddings(embeddings, metadata, contents, "algorithms")
+                .await
+                .map_err(|e| format!("Failed to store algorithm embeddings: {:#}", e))?;
+        }
+
+        // Update paper status to active (algorithms auto-approved)
+        self.metadata
+            .update_paper_status(&req.paper_id, PaperStatus::Active, paper.chunk_count)
+            .await
+            .map_err(|e| format!("{:#}", e))?;
+
+        let verification_status = result
+            .verification
+            .as_ref()
+            .map(|v| v.verification_status.clone());
+
+        let response = ExtractAlgorithmsResponse {
+            paper_id: req.paper_id.clone(),
+            algorithm_count: result.algorithms.len(),
+            evidence_count: result.evidence.evidence_items.len(),
+            verification_status,
+            duration_ms: start.elapsed().as_millis() as u64,
+        };
+
+        serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
+    }
 }
 
 // Prompts for slash commands
@@ -487,7 +663,8 @@ impl ServerHandler for RagMcpServer {
                 Use search to search paper content semantically, \
                 search_papers to find papers by title/authors/status, \
                 search_algorithms to find algorithms across papers by keyword/tags, \
-                index_paper to upload and index a paper from a file path or URL."
+                index_paper to upload and index a paper from a file path or URL, \
+                extract_algorithms to run AI-powered algorithm extraction on an indexed paper."
                     .into(),
             ),
         }

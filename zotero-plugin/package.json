@@ -1,0 +1,22 @@
+{
+  "name": "zotero-rag-library",
+  "version": "0.1.0",
+  "description": "RAG Library connector for Zotero 7 — upload papers, extract algorithms via MCP",
+  "author": "project-rag",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --dev"
+  },
+  "config": {
+    "addonName": "Zotero RAG Library",
+    "addonID": "zotero-rag@project-rag",
+    "addonRef": "zoterorag",
+    "addonInstance": "ZoteroRAG",
+    "prefsPrefix": "extensions.zotero.zoterorag"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0",
+    "zotero-types": "^2.0.0"
+  }
+}

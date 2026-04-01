@@ -36,7 +36,15 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "mcp__rag-searcher__search_papers",
-      "mcp__rag-searcher__search_algorithms"
+      "mcp__rag-searcher__search_algorithms",
+      "Bash(node scripts/build.mjs)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:www.zotero.org)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:groups.google.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:forums.zotero.org)",
+      "Bash(printf '\\\\x89PNG\\\\r\\\\n\\\\x1a\\\\n\\\\x00\\\\x00\\\\x00\\\\rIHDR\\\\x00\\\\x00\\\\x000\\\\x00\\\\x00\\\\x000\\\\x08\\\\x02\\\\x00\\\\x00\\\\x00\\\\xd8`\\\\xa3\\\\xe1\\\\x00\\\\x00\\\\x00\\\\x1dIDATx\\\\x9c\\\\xed\\\\xc1\\\\x01\\\\r\\\\x00\\\\x00\\\\x00\\\\xc2\\\\xa0\\\\xf7Om\\\\x0f\\\\x07\\\\x14\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00p\\\\xde\\\\x03\\\\x100\\\\x00\\\\x01\\\\xae\\\\x18\\\\xe1\\\\x08\\\\x00\\\\x00\\\\x00\\\\x00IEND\\\\xaeB`\\\\x82')"
     ]
   }
 }

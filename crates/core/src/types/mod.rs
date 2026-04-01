@@ -304,6 +304,28 @@ pub struct IndexPaperResponse {
     pub duration_ms: u64,
 }
 
+/// Request to extract algorithms from an indexed paper
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExtractAlgorithmsRequest {
+    /// ID of the paper to extract algorithms from (must be indexed first via index_paper)
+    pub paper_id: String,
+}
+
+/// Response from extract_algorithms
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExtractAlgorithmsResponse {
+    /// Paper ID
+    pub paper_id: String,
+    /// Number of algorithms extracted
+    pub algorithm_count: usize,
+    /// Number of evidence items found
+    pub evidence_count: usize,
+    /// Verification status from quality check pass ("pass", "warn", "fail", or null)
+    pub verification_status: Option<String>,
+    /// Time taken in milliseconds
+    pub duration_ms: u64,
+}
+
 /// Metadata stored with each chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {
