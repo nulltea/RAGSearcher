@@ -38,6 +38,23 @@ pub struct RagClient {
 }
 
 impl RagClient {
+    /// Get the embedding provider
+    pub fn embedding_provider(&self) -> &Arc<FastEmbedManager> {
+        &self.embedding_provider
+    }
+
+    /// Get the vector database
+    #[cfg(feature = "qdrant-backend")]
+    pub fn vector_db(&self) -> &Arc<QdrantVectorDB> {
+        &self.vector_db
+    }
+
+    /// Get the vector database
+    #[cfg(not(feature = "qdrant-backend"))]
+    pub fn vector_db(&self) -> &Arc<LanceVectorDB> {
+        &self.vector_db
+    }
+
     /// Create a new RAG client with default configuration
     pub async fn new() -> Result<Self> {
         let config = Config::new().context("Failed to load configuration")?;

@@ -3,7 +3,9 @@ use crate::embedding::EmbeddingProvider;
 use crate::extraction::AlgorithmExtractor;
 use crate::indexer::{ChunkInput, extract_pdf};
 use crate::metadata::MetadataStore;
-use crate::metadata::models::{AlgorithmIORow, AlgorithmStepRow, PaperCreate, PaperStatus, PatternStatus};
+use crate::metadata::models::{
+    AlgorithmIORow, AlgorithmStepRow, PaperCreate, PaperStatus, PatternStatus,
+};
 use crate::paths::PlatformPaths;
 use crate::types::*;
 use crate::vector_db::VectorDatabase;
@@ -76,7 +78,11 @@ impl RagMcpServer {
     }
 
     /// Create a new RAG MCP server with an existing client and metadata store
-    pub fn with_client_and_metadata(client: Arc<RagClient>, metadata: Arc<MetadataStore>, upload_dir: PathBuf) -> Result<Self> {
+    pub fn with_client_and_metadata(
+        client: Arc<RagClient>,
+        metadata: Arc<MetadataStore>,
+        upload_dir: PathBuf,
+    ) -> Result<Self> {
         Ok(Self {
             client,
             metadata,
@@ -96,10 +102,7 @@ impl RagMcpServer {
 #[tool_router(router = tool_router)]
 impl RagMcpServer {
     #[tool(description = "Search indexed papers using semantic search")]
-    async fn search(
-        &self,
-        Parameters(req): Parameters<QueryRequest>,
-    ) -> Result<String, String> {
+    async fn search(&self, Parameters(req): Parameters<QueryRequest>) -> Result<String, String> {
         req.validate()?;
 
         let response = self
@@ -125,7 +128,9 @@ impl RagMcpServer {
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
 
-    #[tool(description = "Search papers by title, authors, status, or type. Returns paper metadata including chunk count and status.")]
+    #[tool(
+        description = "Search papers by title, authors, status, or type. Returns paper metadata including chunk count and status."
+    )]
     async fn search_papers(
         &self,
         Parameters(req): Parameters<SearchPapersRequest>,
@@ -171,7 +176,9 @@ impl RagMcpServer {
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
 
-    #[tool(description = "Search algorithms across all papers by keyword, status, tags, or paper. Returns structured algorithm data including steps, I/O, and pseudocode.")]
+    #[tool(
+        description = "Search algorithms across all papers by keyword, status, tags, or paper. Returns structured algorithm data including steps, I/O, and pseudocode."
+    )]
     async fn search_algorithms(
         &self,
         Parameters(req): Parameters<SearchAlgorithmsRequest>,
@@ -199,9 +206,21 @@ impl RagMcpServer {
                 paper_title,
                 name: alg.name,
                 description: alg.description,
-                steps: alg.steps.into_iter().map(|s| serde_json::to_value(s).unwrap_or_default()).collect(),
-                inputs: alg.inputs.into_iter().map(|i| serde_json::to_value(i).unwrap_or_default()).collect(),
-                outputs: alg.outputs.into_iter().map(|o| serde_json::to_value(o).unwrap_or_default()).collect(),
+                steps: alg
+                    .steps
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap_or_default())
+                    .collect(),
+                inputs: alg
+                    .inputs
+                    .into_iter()
+                    .map(|i| serde_json::to_value(i).unwrap_or_default())
+                    .collect(),
+                outputs: alg
+                    .outputs
+                    .into_iter()
+                    .map(|o| serde_json::to_value(o).unwrap_or_default())
+                    .collect(),
                 preconditions: alg.preconditions,
                 complexity: alg.complexity,
                 mathematical_notation: alg.mathematical_notation,
@@ -224,7 +243,9 @@ impl RagMcpServer {
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
 
-    #[tool(description = "Index a paper from a local file path or URL. Extracts text, chunks it, generates embeddings, and stores in the vector database for semantic search.")]
+    #[tool(
+        description = "Index a paper from a local file path or URL. Extracts text, chunks it, generates embeddings, and stores in the vector database for semantic search."
+    )]
     async fn index_paper(
         &self,
         Parameters(req): Parameters<IndexPaperRequest>,
@@ -260,18 +281,26 @@ impl RagMcpServer {
                 .await
                 .map_err(|e| format!("Failed to read response body: {}", e))?
                 .to_vec();
-            let filename = url.rsplit('/').next()
+            let filename = url
+                .rsplit('/')
+                .next()
                 .unwrap_or("download.pdf")
-                .split('?').next()
+                .split('?')
+                .next()
                 .unwrap_or("download.pdf")
                 .to_string();
-            (bytes, Some(filename), req.source.clone().or_else(|| Some(url.clone())))
+            (
+                bytes,
+                Some(filename),
+                req.source.clone().or_else(|| Some(url.clone())),
+            )
         } else {
             return Err("Either 'file_path' or 'url' is required".to_string());
         };
 
         // Determine extension and extract text
-        let ext = original_filename.as_deref()
+        let ext = original_filename
+            .as_deref()
             .and_then(|f| f.rsplit('.').next())
             .unwrap_or("pdf");
 
@@ -281,7 +310,10 @@ impl RagMcpServer {
             .await
             .map_err(|e| format!("Failed to save file: {}", e))?;
 
-        let stored_file_path = saved_path.canonicalize().ok().map(|p| p.to_string_lossy().to_string());
+        let stored_file_path = saved_path
+            .canonicalize()
+            .ok()
+            .map(|p| p.to_string_lossy().to_string());
 
         let (content, pdf_title) = if ext.eq_ignore_ascii_case("pdf") {
             let path = saved_path.clone();
@@ -291,20 +323,27 @@ impl RagMcpServer {
                 .map_err(|e| format!("PDF extraction failed: {:#}", e))?;
             (extraction.text, extraction.title)
         } else {
-            let text = String::from_utf8(bytes)
-                .map_err(|_| "File is not valid UTF-8 text".to_string())?;
+            let text =
+                String::from_utf8(bytes).map_err(|_| "File is not valid UTF-8 text".to_string())?;
             (text, None)
         };
 
         // Resolve title
         let title = req.title.or(pdf_title).unwrap_or_else(|| {
-            original_filename.as_deref()
+            original_filename
+                .as_deref()
                 .and_then(|f| f.rsplit('.').nth(1).map(|s| s.to_string()))
                 .unwrap_or_else(|| "Untitled Paper".to_string())
         });
 
-        let authors: Vec<String> = req.authors
-            .map(|a| a.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        let authors: Vec<String> = req
+            .authors
+            .map(|a| {
+                a.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
             .unwrap_or_default();
 
         // Create paper metadata record
@@ -363,7 +402,9 @@ impl RagMcpServer {
                 .map_err(|e| format!("Embedding task error: {}", e))?
                 .map_err(|e| format!("Embedding generation failed: {:#}", e))?;
 
-            let count = self.client.vector_db
+            let count = self
+                .client
+                .vector_db
                 .store_embeddings(embeddings, metadata, contents, "papers")
                 .await
                 .map_err(|e| format!("Failed to store embeddings: {:#}", e))?;
@@ -386,7 +427,9 @@ impl RagMcpServer {
         serde_json::to_string_pretty(&response).map_err(|e| format!("Serialization failed: {}", e))
     }
 
-    #[tool(description = "Extract algorithms from an indexed paper using a 3-pass AI pipeline (evidence inventory → algorithm definitions → verification). The paper must be indexed first via index_paper. Takes 30-120 seconds depending on paper length.")]
+    #[tool(
+        description = "Extract algorithms from an indexed paper using a 3-pass AI pipeline (evidence inventory → algorithm definitions → verification). The paper must be indexed first via index_paper. Takes 30-120 seconds depending on paper length."
+    )]
     async fn extract_algorithms(
         &self,
         Parameters(req): Parameters<ExtractAlgorithmsRequest>,

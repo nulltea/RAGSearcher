@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::{
-    flexible_string_vec, opt_string_or_json, string_or_json, string_or_json_default,
-    usize_or_string, CitationIssue, EvidenceInventory,
+    CitationIssue, EvidenceInventory, flexible_string_vec, opt_string_or_json, string_or_json,
+    string_or_json_default, usize_or_string,
 };
 
 // --- Pass 1: Algorithm Inventory ---
@@ -17,11 +17,7 @@ pub struct AlgorithmCandidate {
     pub description: String,
     #[serde(default, deserialize_with = "string_or_json_default")]
     pub location: String,
-    #[serde(
-        default,
-        rename = "type",
-        deserialize_with = "string_or_json_default"
-    )]
+    #[serde(default, rename = "type", deserialize_with = "string_or_json_default")]
     pub algorithm_type: String,
     #[serde(default, deserialize_with = "flexible_string_vec")]
     pub evidence_ids: Vec<String>,
@@ -54,11 +50,7 @@ pub struct AlgorithmStep {
 pub struct AlgorithmIO {
     #[serde(deserialize_with = "string_or_json")]
     pub name: String,
-    #[serde(
-        default,
-        rename = "type",
-        deserialize_with = "string_or_json_default"
-    )]
+    #[serde(default, rename = "type", deserialize_with = "string_or_json_default")]
     pub io_type: String,
     #[serde(default, deserialize_with = "string_or_json_default")]
     pub description: String,

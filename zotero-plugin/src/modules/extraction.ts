@@ -23,18 +23,20 @@ export async function extractAlgorithms(client: McpClient): Promise<void> {
 
   // Check if algorithms already exist — skip expensive extraction
   try {
+    // Pass status: null to override serde default ("approved") and find any status
     const existing = await client.searchAlgorithms({
       paper_id: paperId,
-      status: "approved",
+      status: (null as unknown as string),
       limit: 50,
     });
     if (existing.algorithms.length > 0) {
+      showSuccess(`Already extracted (${existing.algorithms.length} algorithms).`);
       const title = (item.getField("title") as string) || "Untitled";
       openReviewDialog(title, existing.algorithms);
       return;
     }
-  } catch {
-    // Server not reachable or no algorithms — proceed with extraction
+  } catch (e) {
+    Zotero.debug(`[RAG] Algorithm check failed, proceeding with extraction: ${e}`);
   }
 
   const progress = showProgress("Extracting Algorithms");

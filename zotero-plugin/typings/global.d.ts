@@ -30,3 +30,19 @@ declare const PathUtils: {
 };
 
 declare const APP_SHUTDOWN: number;
+
+declare namespace Zotero {
+  const ItemPaneManager: {
+    registerSection(options: {
+      paneID: string;
+      pluginID: string;
+      header: { l10nID: string; icon?: string };
+      sidenav: { l10nID: string; icon?: string };
+      onInit?: (params: { body: HTMLElement; doc: Document; item: any; setEnabled: (enabled: boolean) => void; refresh: () => void }) => void;
+      onRender: (params: { body: HTMLElement; item: any; editable?: boolean; tabType?: string }) => void;
+      onAsyncRender?: (params: { body: HTMLElement; item: any; editable?: boolean; tabType?: string }) => Promise<void> | void;
+      onItemChange?: (params: { body: HTMLElement; item: any }) => void;
+    }): string;
+    unregisterSection(id: string): void;
+  };
+}

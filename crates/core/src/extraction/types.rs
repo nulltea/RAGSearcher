@@ -51,9 +51,7 @@ where
             .as_u64()
             .map(|v| v as usize)
             .ok_or_else(|| serde::de::Error::custom("expected unsigned integer")),
-        serde_json::Value::String(s) => s
-            .parse::<usize>()
-            .map_err(serde::de::Error::custom),
+        serde_json::Value::String(s) => s.parse::<usize>().map_err(serde::de::Error::custom),
         _ => Err(serde::de::Error::custom("expected number or string")),
     }
 }
@@ -126,7 +124,11 @@ pub struct EvidenceInventory {
     pub evidence_items: Vec<EvidenceItem>,
     #[serde(default, deserialize_with = "string_or_json_default")]
     pub paper_type: String,
-    #[serde(default, alias = "core_contribution_summary", deserialize_with = "string_or_json_default")]
+    #[serde(
+        default,
+        alias = "core_contribution_summary",
+        deserialize_with = "string_or_json_default"
+    )]
     pub summary: String,
 }
 

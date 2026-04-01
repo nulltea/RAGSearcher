@@ -73,9 +73,7 @@ impl MetadataStore {
         .context("Failed to create tables")?;
 
         // Migrations for existing databases
-        let _ = conn.execute_batch(
-            "ALTER TABLE papers ADD COLUMN file_path TEXT;",
-        );
+        let _ = conn.execute_batch("ALTER TABLE papers ADD COLUMN file_path TEXT;");
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -261,7 +259,9 @@ impl MetadataStore {
         let id = id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let now = chrono::Utc::now().to_rfc3339();
             conn.execute(
                 "UPDATE papers SET status = ?1, chunk_count = ?2, updated_at = ?3 WHERE id = ?4",
@@ -277,7 +277,9 @@ impl MetadataStore {
         let id = id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let rows = conn.execute("DELETE FROM papers WHERE id = ?1", rusqlite::params![id])?;
             Ok(rows > 0)
         })
@@ -395,7 +397,9 @@ impl MetadataStore {
         let id = id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let now = chrono::Utc::now().to_rfc3339();
             conn.execute(
                 "UPDATE patterns SET status = ?1, updated_at = ?2 WHERE id = ?3",
@@ -411,7 +415,9 @@ impl MetadataStore {
         let paper_id = paper_id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             conn.execute(
                 "DELETE FROM patterns WHERE paper_id = ?1",
                 rusqlite::params![paper_id],
@@ -430,7 +436,13 @@ impl MetadataStore {
         offset: usize,
     ) -> Result<(Vec<Paper>, usize)> {
         let conn = self.conn.clone();
-        let query = query.and_then(|q| if q.trim().is_empty() { None } else { Some(format!("%{}%", q)) });
+        let query = query.and_then(|q| {
+            if q.trim().is_empty() {
+                None
+            } else {
+                Some(format!("%{}%", q))
+            }
+        });
         let status = status.map(|s| s.to_string());
         let paper_type = paper_type.map(|t| t.to_string());
 
@@ -512,15 +524,14 @@ impl MetadataStore {
         .await?
     }
 
-    pub async fn count_patterns_by_status(
-        &self,
-        paper_id: &str,
-    ) -> Result<(usize, usize, usize)> {
+    pub async fn count_patterns_by_status(&self, paper_id: &str) -> Result<(usize, usize, usize)> {
         let conn = self.conn.clone();
         let paper_id = paper_id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let mut stmt = conn.prepare(
                 "SELECT status, COUNT(*) FROM patterns WHERE paper_id = ?1 GROUP BY status",
             )?;

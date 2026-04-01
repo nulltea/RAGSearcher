@@ -1,0 +1,135 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<!DOCTYPE window>
+<window
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  title="Extracted Patterns"
+  width="850"
+  height="700"
+>
+<html:style>
+  :root {
+    --bg: #ffffff; --bg-card: #fafafa; --bg-code: #f3f4f6;
+    --fg: #1f2937; --fg-secondary: #374151; --fg-muted: #6b7280; --fg-meta: #666666;
+    --border: #cccccc; --border-light: #e5e7eb;
+    --tag-bg: #e0e7ff; --tag-fg: #3730a3;
+    --accent: #4f46e5;
+    --confidence-high: #166534; --confidence-medium: #92400e; --confidence-low: #991b1b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e2e; --bg-card: #2a2a3c; --bg-code: #313244;
+      --fg: #cdd6f4; --fg-secondary: #bac2de; --fg-muted: #a6adc8; --fg-meta: #9399b2;
+      --border: #45475a; --border-light: #45475a;
+      --tag-bg: #313244; --tag-fg: #89b4fa;
+      --accent: #89b4fa;
+      --confidence-high: #a6e3a1; --confidence-medium: #fab387; --confidence-low: #f38ba8;
+    }
+  }
+  .container { padding: 16px; font-family: system-ui, sans-serif; overflow-y: auto; max-height: calc(100vh - 40px); color: var(--fg); background: var(--bg); }
+  .header { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; background: var(--bg-card); }
+  .card-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .card-meta { font-size: 12px; color: var(--fg-meta); margin-bottom: 8px; }
+  .claim { font-size: 13px; color: var(--fg-secondary); margin-bottom: 8px; line-height: 1.5; }
+  .tag { display: inline-block; background: var(--tag-bg); color: var(--tag-fg); border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 11px; }
+  .confidence-high { color: var(--confidence-high); } .confidence-medium { color: var(--confidence-medium); } .confidence-low { color: var(--confidence-low); }
+  details { margin: 6px 0; }
+  summary { cursor: pointer; font-weight: 500; font-size: 13px; color: var(--fg-secondary); }
+  .detail-text { margin: 4px 0 4px 8px; font-size: 13px; color: var(--fg); line-height: 1.5; white-space: pre-wrap; }
+</html:style>
+
+<html:div id="root"></html:div>
+
+<script type="application/javascript">
+<![CDATA[
+(function() {
+  var args = window.arguments[0];
+  var paperTitle = args.paperTitle;
+  var patterns = args.patterns;
+
+  var root = document.getElementById("root");
+
+  var container = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+  container.className = "container";
+
+  var header = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+  header.className = "header";
+  header.textContent = "Extracted Patterns: " + paperTitle + " (" + patterns.length + ")";
+  container.appendChild(header);
+
+  for (var i = 0; i < patterns.length; i++) {
+    var p = patterns[i];
+    var card = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    card.className = "card";
+
+    // Name
+    var title = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    title.className = "card-title";
+    title.textContent = p.name;
+    card.appendChild(title);
+
+    // Claim
+    if (p.claim) {
+      var claim = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      claim.className = "claim";
+      claim.textContent = p.claim;
+      card.appendChild(claim);
+    }
+
+    // Meta: confidence
+    var meta = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    meta.className = "card-meta";
+    var conf = document.createElementNS("http://www.w3.org/1999/xhtml", "span");
+    conf.className = "confidence-" + p.confidence;
+    conf.textContent = "Confidence: " + p.confidence;
+    meta.appendChild(conf);
+    card.appendChild(meta);
+
+    // Tags
+    if (p.tags && p.tags.length > 0) {
+      var tagContainer = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      for (var j = 0; j < p.tags.length; j++) {
+        var tag = document.createElementNS("http://www.w3.org/1999/xhtml", "span");
+        tag.className = "tag";
+        tag.textContent = p.tags[j];
+        tagContainer.appendChild(tag);
+      }
+      card.appendChild(tagContainer);
+    }
+
+    // Evidence (collapsible)
+    if (p.evidence) {
+      var evidenceDetails = document.createElementNS("http://www.w3.org/1999/xhtml", "details");
+      var evidenceSummary = document.createElementNS("http://www.w3.org/1999/xhtml", "summary");
+      evidenceSummary.textContent = "Evidence";
+      evidenceDetails.appendChild(evidenceSummary);
+      var evidenceText = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      evidenceText.className = "detail-text";
+      evidenceText.textContent = p.evidence;
+      evidenceDetails.appendChild(evidenceText);
+      card.appendChild(evidenceDetails);
+    }
+
+    // Context (collapsible)
+    if (p.context) {
+      var contextDetails = document.createElementNS("http://www.w3.org/1999/xhtml", "details");
+      var contextSummary = document.createElementNS("http://www.w3.org/1999/xhtml", "summary");
+      contextSummary.textContent = "Context";
+      contextDetails.appendChild(contextSummary);
+      var contextText = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      contextText.className = "detail-text";
+      contextText.textContent = p.context;
+      contextDetails.appendChild(contextText);
+      card.appendChild(contextDetails);
+    }
+
+    container.appendChild(card);
+  }
+
+  root.appendChild(container);
+})();
+]]>
+</script>
+</window>

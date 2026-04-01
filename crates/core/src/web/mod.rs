@@ -5,10 +5,10 @@ pub mod models;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::Method;
+use axum::routing::{get, post};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -38,18 +38,39 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/health", get(handlers::health::health))
-        .route("/api/papers", get(handlers::papers::list_papers)
-            .post(handlers::papers::upload_paper))
-        .route("/api/papers/{id}", get(handlers::papers::get_paper)
-            .delete(handlers::papers::delete_paper))
-        .route("/api/papers/{id}/extract", post(handlers::patterns::extract_patterns))
-        .route("/api/papers/{id}/patterns", get(handlers::patterns::list_patterns)
-            .delete(handlers::patterns::delete_patterns))
-        .route("/api/papers/{id}/patterns/review", post(handlers::patterns::submit_review))
-        .route("/api/papers/{id}/extract-algorithms", post(handlers::algorithms::extract_algorithms))
-        .route("/api/papers/{id}/algorithms", get(handlers::algorithms::list_algorithms)
-            .delete(handlers::algorithms::delete_algorithms))
-        .route("/api/papers/{id}/algorithms/review", post(handlers::algorithms::submit_algorithm_review))
+        .route(
+            "/api/papers",
+            get(handlers::papers::list_papers).post(handlers::papers::upload_paper),
+        )
+        .route(
+            "/api/papers/{id}",
+            get(handlers::papers::get_paper).delete(handlers::papers::delete_paper),
+        )
+        .route(
+            "/api/papers/{id}/extract",
+            post(handlers::patterns::extract_patterns),
+        )
+        .route(
+            "/api/papers/{id}/patterns",
+            get(handlers::patterns::list_patterns).delete(handlers::patterns::delete_patterns),
+        )
+        .route(
+            "/api/papers/{id}/patterns/review",
+            post(handlers::patterns::submit_review),
+        )
+        .route(
+            "/api/papers/{id}/extract-algorithms",
+            post(handlers::algorithms::extract_algorithms),
+        )
+        .route(
+            "/api/papers/{id}/algorithms",
+            get(handlers::algorithms::list_algorithms)
+                .delete(handlers::algorithms::delete_algorithms),
+        )
+        .route(
+            "/api/papers/{id}/algorithms/review",
+            post(handlers::algorithms::submit_algorithm_review),
+        )
         .route("/api/search", post(handlers::search::search))
         .route("/api/statistics", get(handlers::search::statistics))
         .layer(TraceLayer::new_for_http())

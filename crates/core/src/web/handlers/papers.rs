@@ -1,19 +1,19 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use axum::Json;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 use crate::embedding::EmbeddingProvider;
 use crate::indexer::{ChunkInput, extract_pdf};
 use crate::metadata::models::{PaperCreate, PaperListParams, PaperStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
+use crate::web::AppState;
 use crate::web::errors::ApiError;
 use crate::web::models::{PaperListResponse, PaperUploadResponse};
-use crate::web::AppState;
 
 pub async fn upload_paper(
     State(state): State<Arc<AppState>>,
@@ -43,22 +43,18 @@ pub async fn upload_paper(
             "file" => {
                 original_filename = field.file_name().map(|s| s.to_string());
                 let mut data = Vec::new();
-                while let Some(chunk) = field
-                    .chunk()
-                    .await
-                    .map_err(|e| ApiError::BadRequest(format!("Failed to read file chunk: {}", e)))?
-                {
+                while let Some(chunk) = field.chunk().await.map_err(|e| {
+                    ApiError::BadRequest(format!("Failed to read file chunk: {}", e))
+                })? {
                     data.extend_from_slice(&chunk);
                 }
                 file_bytes = Some(data);
             }
             "text" => {
-                text_content = Some(
-                    field
-                        .text()
-                        .await
-                        .map_err(|e| ApiError::BadRequest(format!("Failed to read text: {}", e)))?,
-                );
+                text_content =
+                    Some(field.text().await.map_err(|e| {
+                        ApiError::BadRequest(format!("Failed to read text: {}", e))
+                    })?);
             }
             "url" => {
                 url = Some(
@@ -81,7 +77,11 @@ pub async fn upload_paper(
                     .text()
                     .await
                     .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-                authors = val.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+                authors = val
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
             }
             "source" => {
                 source = Some(
@@ -163,7 +163,10 @@ pub async fn upload_paper(
             .await
             .map_err(|e| ApiError::Internal(format!("Failed to save file: {}", e)))?;
 
-        stored_file_path = file_path.canonicalize().ok().map(|p| p.to_string_lossy().to_string());
+        stored_file_path = file_path
+            .canonicalize()
+            .ok()
+            .map(|p| p.to_string_lossy().to_string());
 
         if ext.eq_ignore_ascii_case("pdf") {
             let path = file_path.clone();
@@ -189,7 +192,12 @@ pub async fn upload_paper(
     let title = title.or(pdf_title).unwrap_or_else(|| {
         original_filename
             .as_deref()
-            .map(|f| f.rsplit('.').nth(1).map(|s| s.to_string()).unwrap_or_else(|| f.to_string()))
+            .map(|f| {
+                f.rsplit('.')
+                    .nth(1)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| f.to_string())
+            })
             .unwrap_or_else(|| "Untitled Paper".to_string())
     });
 

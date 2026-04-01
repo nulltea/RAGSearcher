@@ -1,21 +1,20 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::Deserialize;
 
 use crate::embedding::EmbeddingProvider;
 use crate::metadata::models::{AlgorithmIORow, AlgorithmStepRow, PatternStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
+use crate::web::AppState;
 use crate::web::errors::ApiError;
 use crate::web::models::{
-    AlgorithmExtractResponse, AlgorithmListResponse, AlgorithmReviewResponse,
-    PatternReviewRequest,
+    AlgorithmExtractResponse, AlgorithmListResponse, AlgorithmReviewResponse, PatternReviewRequest,
 };
-use crate::web::AppState;
 
 /// POST /api/papers/{id}/extract-algorithms
 pub async fn extract_algorithms(
@@ -117,7 +116,11 @@ pub async fn extract_algorithms(
     // Update paper status to ready_for_review
     state
         .metadata
-        .update_paper_status(&paper_id, crate::metadata::models::PaperStatus::ReadyForReview, paper.chunk_count)
+        .update_paper_status(
+            &paper_id,
+            crate::metadata::models::PaperStatus::ReadyForReview,
+            paper.chunk_count,
+        )
         .await
         .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
 
@@ -262,7 +265,11 @@ pub async fn submit_algorithm_review(
         if let Some(p) = paper {
             state
                 .metadata
-                .update_paper_status(&paper_id, crate::metadata::models::PaperStatus::Active, p.chunk_count)
+                .update_paper_status(
+                    &paper_id,
+                    crate::metadata::models::PaperStatus::Active,
+                    p.chunk_count,
+                )
                 .await
                 .map_err(|e| ApiError::Internal(format!("{:#}", e)))?;
         }

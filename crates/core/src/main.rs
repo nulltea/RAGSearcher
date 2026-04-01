@@ -1,11 +1,17 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use project_rag::RagClient;
+use project_rag::embedding::EmbeddingProvider;
 use project_rag::extraction::{AlgorithmExtractor, PatternExtractor};
 use project_rag::mcp_server::RagMcpServer;
 use project_rag::metadata::MetadataStore;
-use project_rag::RagClient;
+use project_rag::metadata::models::{PaperStatus, Pattern, PatternStatus};
+use project_rag::paths::PlatformPaths;
+use project_rag::types::ChunkMetadata;
+use project_rag::vector_db::VectorDatabase;
 use std::panic;
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Project-RAG: Paper library with semantic search
 #[derive(Parser)]
@@ -32,6 +38,21 @@ enum Commands {
         host: String,
     },
 
+    /// Extract patterns from an indexed paper (3-pass AI pipeline, auto-approves)
+    ExtractPatterns {
+        /// Paper ID to extract patterns from
+        paper_id: String,
+    },
+
+    /// List patterns for a paper (JSON output)
+    ListPatterns {
+        /// Paper ID to list patterns for
+        paper_id: String,
+        /// Filter by status: pending, approved, rejected
+        #[arg(short, long)]
+        status: Option<String>,
+    },
+
     /// Show version and system information
     Version,
 }
@@ -42,7 +63,13 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize tracing — MCP serve mode MUST use stderr (stdout is JSON-RPC channel)
-    let use_stderr = matches!(cli.command, Some(Commands::Serve) | None);
+    let use_stderr = matches!(
+        cli.command,
+        Some(Commands::Serve)
+            | Some(Commands::ExtractPatterns { .. })
+            | Some(Commands::ListPatterns { .. })
+            | None
+    );
     if use_stderr {
         tracing_subscriber::fmt()
             .with_writer(std::io::stderr)
@@ -79,13 +106,28 @@ async fn main() -> Result<()> {
             let extractor = Arc::new(PatternExtractor::new());
             let algorithm_extractor = Arc::new(AlgorithmExtractor::new());
 
-            if let Err(e) =
-                project_rag::web::start_server(&host, port, client, metadata, upload_dir, Some(extractor), Some(algorithm_extractor)).await
+            if let Err(e) = project_rag::web::start_server(
+                &host,
+                port,
+                client,
+                metadata,
+                upload_dir,
+                Some(extractor),
+                Some(algorithm_extractor),
+            )
+            .await
             {
                 tracing::error!("Fatal error in web server: {:#}", e);
                 eprintln!("Fatal error: {:#}", e);
                 std::process::exit(1);
             }
+        }
+        Some(Commands::ExtractPatterns { paper_id }) => {
+            setup_panic_handler();
+            extract_patterns_cli(&paper_id).await?;
+        }
+        Some(Commands::ListPatterns { paper_id, status }) => {
+            list_patterns_cli(&paper_id, status.as_deref()).await?;
         }
         Some(Commands::Serve) | None => {
             // Set up global panic handler
@@ -153,6 +195,154 @@ fn show_version_info() {
     println!("  Hybrid Search:   Enabled (Vector + BM25 keyword search)");
     println!("  Paper Library:   Upload, extract, and search papers");
     println!("  Extraction:      Pattern and algorithm extraction via Claude CLI");
+}
+
+// --- CLI command implementations ---
+
+#[derive(serde::Serialize)]
+struct ExtractPatternsResponse {
+    paper_id: String,
+    pattern_count: usize,
+    evidence_count: usize,
+    verification_status: Option<String>,
+    duration_ms: u64,
+}
+
+#[derive(serde::Serialize)]
+struct ListPatternsResponse {
+    patterns: Vec<Pattern>,
+    count: usize,
+}
+
+async fn extract_patterns_cli(paper_id: &str) -> Result<()> {
+    let start = Instant::now();
+
+    let data_dir = PlatformPaths::project_data_dir();
+    let db_path = data_dir.join("papers.db");
+    let upload_dir = data_dir.join("uploads");
+
+    let client = Arc::new(RagClient::new().await?);
+    let metadata = Arc::new(MetadataStore::new(&db_path)?);
+    let extractor = PatternExtractor::new();
+
+    // Verify paper exists
+    let paper = metadata
+        .get_paper(paper_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Paper '{}' not found", paper_id))?;
+
+    // Read paper text
+    let text_path = upload_dir.join(format!("{}.txt", paper_id));
+    let text = tokio::fs::read_to_string(&text_path)
+        .await
+        .map_err(|e| anyhow::anyhow!("Paper text not found at {}: {}", text_path.display(), e))?;
+
+    // Run 3-pass extraction
+    let result = extractor.extract_patterns(&text).await?;
+
+    // Delete existing patterns (re-extraction)
+    metadata.delete_patterns_by_paper(paper_id).await?;
+
+    // Save patterns to SQLite
+    for p in &result.patterns {
+        metadata
+            .create_pattern(
+                paper_id,
+                &p.name,
+                p.claim.as_deref(),
+                p.evidence.as_deref(),
+                p.context.as_deref(),
+                &p.tags,
+                &p.confidence,
+            )
+            .await?;
+    }
+
+    // Auto-approve all extracted patterns
+    let pending = metadata.list_patterns(paper_id, Some("pending")).await?;
+    for p in &pending {
+        metadata
+            .update_pattern_status(&p.id, PatternStatus::Approved)
+            .await?;
+    }
+
+    // Embed approved patterns into LanceDB
+    if !pending.is_empty() {
+        let texts: Vec<String> = pending
+            .iter()
+            .map(|p| {
+                let mut parts = vec![p.name.clone()];
+                if let Some(ref c) = p.claim {
+                    parts.push(c.clone());
+                }
+                if let Some(ref e) = p.evidence {
+                    parts.push(e.clone());
+                }
+                if let Some(ref ctx) = p.context {
+                    parts.push(ctx.clone());
+                }
+                parts.join(" | ")
+            })
+            .collect();
+
+        let chunk_metadata: Vec<ChunkMetadata> = pending
+            .iter()
+            .map(|p| ChunkMetadata {
+                file_path: format!("patterns/{}", p.paper_id),
+                root_path: Some("patterns".to_string()),
+                start_line: 0,
+                end_line: 0,
+                language: Some("Pattern".to_string()),
+                extension: Some("pattern".to_string()),
+                file_hash: p.id.clone(),
+                indexed_at: chrono::Utc::now().timestamp(),
+                project: Some(format!("pattern:{}", p.paper_id)),
+            })
+            .collect();
+
+        let contents: Vec<String> = texts.clone();
+        let provider = client.embedding_provider().clone();
+        let embeddings = tokio::task::spawn_blocking(move || provider.embed_batch(texts)).await??;
+
+        client
+            .vector_db()
+            .store_embeddings(embeddings, chunk_metadata, contents, "patterns")
+            .await?;
+    }
+
+    // Update paper status to Active
+    metadata
+        .update_paper_status(paper_id, PaperStatus::Active, paper.chunk_count)
+        .await?;
+
+    let verification_status = result
+        .verification
+        .as_ref()
+        .map(|v| v.verification_status.clone());
+
+    let response = ExtractPatternsResponse {
+        paper_id: paper_id.to_string(),
+        pattern_count: result.patterns.len(),
+        evidence_count: result.evidence.evidence_items.len(),
+        verification_status,
+        duration_ms: start.elapsed().as_millis() as u64,
+    };
+
+    println!("{}", serde_json::to_string_pretty(&response)?);
+    Ok(())
+}
+
+async fn list_patterns_cli(paper_id: &str, status: Option<&str>) -> Result<()> {
+    let data_dir = PlatformPaths::project_data_dir();
+    let db_path = data_dir.join("papers.db");
+    let metadata = MetadataStore::new(&db_path)?;
+
+    let patterns = metadata.list_patterns(paper_id, status).await?;
+    let count = patterns.len();
+
+    let response = ListPatternsResponse { patterns, count };
+    println!("{}", serde_json::to_string_pretty(&response)?);
+    Ok(())
 }
 
 /// Set up a global panic handler that logs panic information

@@ -6,7 +6,8 @@
   "author": "project-rag",
   "icons": {
     "48": "content/icons/favicon.png",
-    "96": "content/icons/favicon.png"
+    "96": "content/icons/icon-96.png",
+    "128": "content/icons/icon-128.png"
   },
   "applications": {
     "zotero": {

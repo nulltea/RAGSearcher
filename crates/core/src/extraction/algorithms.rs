@@ -43,7 +43,10 @@ impl AlgorithmExtractor {
 
         // If no evidence provided, run evidence extraction first (reuse pattern pass 1)
         let evidence = if let Some(ev) = evidence {
-            tracing::info!("Reusing existing evidence inventory ({} items)", ev.evidence_items.len());
+            tracing::info!(
+                "Reusing existing evidence inventory ({} items)",
+                ev.evidence_items.len()
+            );
             ev.clone()
         } else {
             tracing::info!("No existing evidence — running evidence extraction first (haiku)...");

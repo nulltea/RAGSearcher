@@ -1,14 +1,14 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 
 use crate::types::QueryRequest;
 use crate::vector_db::VectorDatabase;
+use crate::web::AppState;
 use crate::web::errors::ApiError;
 use crate::web::models::{SearchRequest, SearchResponse, StatisticsResponse};
-use crate::web::AppState;
 
 pub async fn search(
     State(state): State<Arc<AppState>>,

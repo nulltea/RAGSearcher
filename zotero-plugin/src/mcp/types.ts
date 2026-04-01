@@ -123,6 +123,34 @@ export interface SearchAlgorithmsResult {
   duration_ms: number;
 }
 
+// Pattern types (from CLI JSON output, not MCP)
+export interface PatternResult {
+  id: string;
+  paper_id: string;
+  name: string;
+  claim: string | null;
+  evidence: string | null;
+  context: string | null;
+  tags: string[];
+  confidence: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExtractPatternsCliResult {
+  paper_id: string;
+  pattern_count: number;
+  evidence_count: number;
+  verification_status: string | null;
+  duration_ms: number;
+}
+
+export interface ListPatternsCliResult {
+  patterns: PatternResult[];
+  count: number;
+}
+
 export interface SearchPapersResult {
   papers: Array<{
     id: string;

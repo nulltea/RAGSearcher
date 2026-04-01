@@ -151,7 +151,9 @@ impl MetadataStore {
         let id = id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let now = chrono::Utc::now().to_rfc3339();
             conn.execute(
                 "UPDATE algorithms SET status = ?1, updated_at = ?2 WHERE id = ?3",
@@ -167,7 +169,9 @@ impl MetadataStore {
         let paper_id = paper_id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             conn.execute(
                 "DELETE FROM algorithms WHERE paper_id = ?1",
                 rusqlite::params![paper_id],
@@ -201,14 +205,20 @@ impl MetadataStore {
         let tags: Option<Vec<String>> = tags.map(|t| t.to_vec());
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
 
             let mut where_clauses = Vec::new();
             let mut bind_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
             if let Some(ref q) = query {
                 let i = bind_values.len() + 1;
-                where_clauses.push(format!("(a.name LIKE ?{} OR a.description LIKE ?{})", i, i + 1));
+                where_clauses.push(format!(
+                    "(a.name LIKE ?{} OR a.description LIKE ?{})",
+                    i,
+                    i + 1
+                ));
                 bind_values.push(Box::new(q.clone()));
                 bind_values.push(Box::new(q.clone()));
             }
@@ -223,7 +233,7 @@ impl MetadataStore {
             if let Some(ref tag_list) = tags {
                 for tag in tag_list {
                     where_clauses.push(format!("a.tags LIKE ?{}", bind_values.len() + 1));
-                    bind_values.push(Box::new(format!("%\"{}\"%" , tag)));
+                    bind_values.push(Box::new(format!("%\"{}\"%", tag)));
                 }
             }
 
@@ -314,7 +324,9 @@ impl MetadataStore {
         let paper_id = paper_id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             let mut stmt = conn.prepare(
                 "SELECT status, COUNT(*) FROM algorithms WHERE paper_id = ?1 GROUP BY status",
             )?;

@@ -111,13 +111,12 @@ impl ClaudeCli {
 
         let cleaned = strip_code_fences(response_text);
 
-        let parsed: serde_json::Value =
-            serde_json::from_str(&cleaned).with_context(|| {
-                format!(
-                    "Failed to parse inner JSON from Claude response. Last 200 chars: ...{}",
-                    &cleaned[cleaned.len().saturating_sub(200)..],
-                )
-            })?;
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned).with_context(|| {
+            format!(
+                "Failed to parse inner JSON from Claude response. Last 200 chars: ...{}",
+                &cleaned[cleaned.len().saturating_sub(200)..],
+            )
+        })?;
 
         tracing::debug!(
             "Parsed JSON response ({} top-level keys)",

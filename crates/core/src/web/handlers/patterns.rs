@@ -1,20 +1,20 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::Deserialize;
 
 use crate::embedding::EmbeddingProvider;
 use crate::metadata::models::{PaperStatus, PatternStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
+use crate::web::AppState;
 use crate::web::errors::ApiError;
 use crate::web::models::{
     ExtractResponse, PatternListResponse, PatternReviewRequest, PatternReviewResponse,
 };
-use crate::web::AppState;
 
 /// POST /api/papers/{id}/extract — trigger pattern extraction via Claude CLI
 pub async fn extract_patterns(
@@ -203,7 +203,9 @@ pub async fn submit_review(
             .vector_db
             .store_embeddings(embeddings, metadata, contents, "patterns")
             .await
-            .map_err(|e| ApiError::Internal(format!("Failed to store pattern embeddings: {:#}", e)))?;
+            .map_err(|e| {
+                ApiError::Internal(format!("Failed to store pattern embeddings: {:#}", e))
+            })?;
     }
 
     // Check if all items (patterns + algorithms) are reviewed; if so, update paper to active

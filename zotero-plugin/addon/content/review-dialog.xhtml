@@ -9,24 +9,42 @@
   height="700"
 >
 <html:style>
-  .container { padding: 16px; font-family: system-ui, sans-serif; overflow-y: auto; max-height: calc(100vh - 80px); }
+  :root {
+    --bg: #ffffff; --bg-card: #fafafa; --bg-code: #f3f4f6;
+    --fg: #1f2937; --fg-secondary: #374151; --fg-muted: #6b7280; --fg-meta: #666666;
+    --border: #cccccc; --border-light: #e5e7eb; --border-btn: #d1d5db;
+    --btn-bg: #ffffff; --btn-fg: #1f2937;
+    --tag-bg: #e0e7ff; --tag-fg: #3730a3;
+    --accent: #4f46e5;
+    --confidence-high: #166534; --confidence-medium: #92400e; --confidence-low: #991b1b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e2e; --bg-card: #2a2a3c; --bg-code: #313244;
+      --fg: #cdd6f4; --fg-secondary: #bac2de; --fg-muted: #a6adc8; --fg-meta: #9399b2;
+      --border: #45475a; --border-light: #45475a; --border-btn: #585b70;
+      --btn-bg: #313244; --btn-fg: #cdd6f4;
+      --tag-bg: #313244; --tag-fg: #89b4fa;
+      --accent: #89b4fa;
+      --confidence-high: #a6e3a1; --confidence-medium: #fab387; --confidence-low: #f38ba8;
+    }
+  }
+  .container { padding: 16px; font-family: system-ui, sans-serif; overflow-y: auto; max-height: calc(100vh - 80px); color: var(--fg); background: var(--bg); }
   .header { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
-  .card { border: 1px solid #ccc; border-radius: 8px; padding: 16px; margin-bottom: 12px; background: #fafafa; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; background: var(--bg-card); }
   .card-header { margin-bottom: 8px; }
   .card-title { font-size: 15px; font-weight: 600; }
-  .card-meta { font-size: 12px; color: #666; margin-bottom: 8px; }
-  .tag { display: inline-block; background: #e0e7ff; color: #3730a3; border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 11px; }
-  .confidence-high { color: #166534; } .confidence-medium { color: #92400e; } .confidence-low { color: #991b1b; }
+  .card-meta { font-size: 12px; color: var(--fg-meta); margin-bottom: 8px; }
+  .tag { display: inline-block; background: var(--tag-bg); color: var(--tag-fg); border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 11px; }
+  .confidence-high { color: var(--confidence-high); } .confidence-medium { color: var(--confidence-medium); } .confidence-low { color: var(--confidence-low); }
   details { margin: 6px 0; }
-  summary { cursor: pointer; font-weight: 500; font-size: 13px; color: #374151; }
-  .step { margin: 4px 0 4px 16px; font-size: 13px; }
-  .step-num { font-weight: 600; color: #4f46e5; }
-  .io-item { margin: 2px 0 2px 16px; font-size: 13px; }
-  .pseudocode { background: #f3f4f6; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; margin: 4px 0; }
-  .footer { padding: 16px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid #e5e7eb; }
-  .btn-secondary { background: white; border: 1px solid #d1d5db; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-  .description { font-size: 13px; color: #374151; margin-bottom: 6px; }
-  .complexity { font-size: 12px; color: #6b7280; font-style: italic; }
+  summary { cursor: pointer; font-weight: 500; font-size: 13px; color: var(--fg-secondary); }
+  .step { margin: 4px 0 4px 16px; font-size: 13px; color: var(--fg); }
+  .step-num { font-weight: 600; color: var(--accent); }
+  .io-item { margin: 2px 0 2px 16px; font-size: 13px; color: var(--fg); }
+  .pseudocode { background: var(--bg-code); padding: 12px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; margin: 4px 0; color: var(--fg); }
+  .description { font-size: 13px; color: var(--fg-secondary); margin-bottom: 6px; }
+  .complexity { font-size: 12px; color: var(--fg-muted); font-style: italic; }
 </html:style>
 
 <html:div id="root"></html:div>
@@ -173,18 +191,6 @@
   }
 
   root.appendChild(container);
-
-  // Footer
-  const footer = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
-  footer.className = "footer";
-
-  const closeBtn = document.createElementNS("http://www.w3.org/1999/xhtml", "button");
-  closeBtn.className = "btn-secondary";
-  closeBtn.textContent = "Close";
-  closeBtn.addEventListener("click", function() { window.close(); });
-  footer.appendChild(closeBtn);
-
-  root.appendChild(footer);
 })();
 ]]>
 </script>

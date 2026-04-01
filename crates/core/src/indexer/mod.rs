@@ -7,7 +7,7 @@ mod chunker;
 mod pdf_extractor;
 
 pub use chunker::{ChunkInput, ChunkStrategy, CodeChunker};
-pub use pdf_extractor::{extract_pdf, extract_pdf_to_markdown, PdfExtraction};
+pub use pdf_extractor::{PdfExtraction, extract_pdf, extract_pdf_to_markdown};
 
 use crate::types::ChunkMetadata;
 

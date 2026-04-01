@@ -64,8 +64,8 @@ impl PatternExtractor {
             raw_str.len(),
             &raw_str[..raw_str.len().min(1000)],
         );
-        let evidence: EvidenceInventory =
-            serde_json::from_value(evidence_raw.clone()).with_context(|| {
+        let evidence: EvidenceInventory = serde_json::from_value(evidence_raw.clone())
+            .with_context(|| {
                 format!(
                     "Failed to parse evidence inventory JSON. First 500 chars: {}",
                     &raw_str[..raw_str.len().min(500)],
