@@ -34,7 +34,9 @@
       "Bash(sips -z 32 32 icon.png --out icon.iconset/icon_32x32.png)",
       "Bash(sips -z 64 64 icon.png --out icon.iconset/icon_32x32@2x.png)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "mcp__rag-searcher__search_papers",
+      "mcp__rag-searcher__search_algorithms"
     ]
   }
 }
