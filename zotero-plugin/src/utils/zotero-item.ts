@@ -59,6 +59,23 @@ export async function getPdfPath(item: Zotero.Item): Promise<string | null> {
   return null;
 }
 
+/** Get the PDF attachment item from a Zotero item */
+export function getPdfAttachmentItem(item: Zotero.Item): Zotero.Item | null {
+  if (item.isAttachment() && item.attachmentContentType === "application/pdf") {
+    return item;
+  }
+
+  const attachmentIDs = item.getAttachments();
+  for (const id of attachmentIDs) {
+    const attachment = Zotero.Items.get(id);
+    if (attachment && attachment.attachmentContentType === "application/pdf") {
+      return attachment;
+    }
+  }
+
+  return null;
+}
+
 /** Get the RAG paper ID stored in the item's Extra field */
 export function getRagPaperId(item: Zotero.Item): string | null {
   const extra = (item.getField("extra") as string) || "";

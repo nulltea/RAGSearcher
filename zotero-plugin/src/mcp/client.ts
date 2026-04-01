@@ -9,6 +9,8 @@ import type {
   IndexPaperArgs,
   IndexPaperResult,
   McpToolCallResult,
+  QueryRequest,
+  QueryResponse,
   SearchAlgorithmsArgs,
   SearchAlgorithmsResult,
   SearchPapersArgs,
@@ -82,6 +84,11 @@ export class McpClient {
   /** Search papers by metadata */
   async searchPapers(args: SearchPapersArgs): Promise<SearchPapersResult> {
     return this.callTool<SearchPapersResult>("search_papers", args as Record<string, unknown>);
+  }
+
+  /** Search indexed paper content semantically */
+  async search(args: QueryRequest): Promise<QueryResponse> {
+    return this.callTool<QueryResponse>("search", args as Record<string, unknown>);
   }
 
   /** Shutdown the MCP process */

@@ -9,6 +9,12 @@ import { AlertCircle, Clock, FileCode, Loader2, Search } from "lucide-react";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+function parseSearchPath(filePath: string): { kind: string; paperId: string } | null {
+  const match = /^(papers|patterns|algorithms)\/(.+)$/.exec(filePath);
+  if (!match) return null;
+  return { kind: match[1], paperId: match[2] };
+}
+
 // ============================================================================
 // Score bar
 // ============================================================================
@@ -39,24 +45,37 @@ function ScoreBar({ score }: { score: number }) {
 // Result card
 // ============================================================================
 
-function ResultCard({ result }: { result: SearchResult }) {
+function ResultCard({
+  result,
+  paperTitle,
+}: {
+  result: SearchResult;
+  paperTitle?: string;
+}) {
   const displayScore = result.combined_score ?? result.score;
   const preview =
     result.content.length > 300
       ? result.content.slice(0, 300).trimEnd() + "…"
       : result.content;
+  const parsed = parseSearchPath(result.file_path);
+  const title = paperTitle ?? parsed?.paperId ?? result.file_path;
+  const subtitle = parsed
+    ? `${parsed.kind} • ${result.file_path} • lines ${result.start_line}-${result.end_line}`
+    : `${result.file_path} • lines ${result.start_line}-${result.end_line}`;
 
   return (
     <Card>
       <CardContent className="p-4">
         {/* Top row: file path + language badge */}
         <div className="mb-2 flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-            <FileCode className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate font-mono text-xs">{result.file_path}</span>
-            <span className="shrink-0 text-xs">
-              :{result.start_line}–{result.end_line}
-            </span>
+          <div className="min-w-0">
+            <div className="mb-0.5 truncate text-lg font-semibold text-foreground">
+              {title}
+            </div>
+            <div className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+              <FileCode className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate font-mono text-xs">{subtitle}</span>
+            </div>
           </div>
           {result.language && (
             <Badge variant="secondary" className="shrink-0 text-xs">
@@ -90,6 +109,7 @@ function SearchPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [paperTitle, setPaperTitle] = useState<string | null>(null);
+  const [titleMap, setTitleMap] = useState<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -99,6 +119,44 @@ function SearchPageInner() {
         .catch(() => setPaperTitle(null));
     }
   }, [paperId]);
+
+  useEffect(() => {
+    if (!response?.results.length) return;
+
+    const idsToFetch = Array.from(
+      new Set(
+        response.results
+          .map((result) => parseSearchPath(result.file_path)?.paperId)
+          .filter((id): id is string => Boolean(id) && !titleMap[id as string])
+      )
+    );
+
+    if (!idsToFetch.length) return;
+
+    let cancelled = false;
+    void Promise.all(
+      idsToFetch.map(async (id) => {
+        try {
+          const paper = await getPaper(id);
+          return [id, paper.title] as const;
+        } catch {
+          return null;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      const updates = Object.fromEntries(
+        entries.filter((entry): entry is readonly [string, string] => Boolean(entry))
+      );
+      if (Object.keys(updates).length) {
+        setTitleMap((prev) => ({ ...prev, ...updates }));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [response, titleMap]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -196,7 +254,14 @@ function SearchPageInner() {
       {hasResults && resultCount > 0 && (
         <div className="flex flex-col gap-3">
           {response!.results.map((result, i) => (
-            <ResultCard key={`${result.file_path}-${result.start_line}-${i}`} result={result} />
+            <ResultCard
+              key={`${result.file_path}-${result.start_line}-${i}`}
+              result={result}
+              paperTitle={(() => {
+                const parsed = parseSearchPath(result.file_path);
+                return parsed ? titleMap[parsed.paperId] : undefined;
+              })()}
+            />
           ))}
         </div>
       )}

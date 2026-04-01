@@ -1,0 +1,192 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<!DOCTYPE window>
+<window
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  title="RAG Search"
+  width="980"
+  height="760"
+>
+<html:style>
+  :root {
+    --bg: #ffffff; --bg-card: #fafafa; --bg-input: #ffffff;
+    --fg: #1f2937; --fg-secondary: #374151; --fg-muted: #6b7280;
+    --border: #d1d5db; --border-light: #e5e7eb;
+    --btn-bg: #111827; --btn-fg: #ffffff; --btn-secondary-bg: #ffffff; --btn-secondary-fg: #1f2937;
+    --accent: #2563eb; --chip-bg: #eff6ff; --chip-fg: #1d4ed8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e2e; --bg-card: #2a2a3c; --bg-input: #313244;
+      --fg: #cdd6f4; --fg-secondary: #bac2de; --fg-muted: #a6adc8;
+      --border: #45475a; --border-light: #585b70;
+      --btn-bg: #89b4fa; --btn-fg: #11111b; --btn-secondary-bg: #313244; --btn-secondary-fg: #cdd6f4;
+      --accent: #89b4fa; --chip-bg: #313244; --chip-fg: #89b4fa;
+    }
+  }
+  html, body, #root { margin: 0; padding: 0; background: var(--bg); color: var(--fg); height: 100%; }
+  #root { overflow: hidden; }
+  .container {
+    padding: 18px; font-family: system-ui, sans-serif; box-sizing: border-box;
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .header { font-size: 19px; font-weight: 700; margin-bottom: 6px; }
+  .subheader { color: var(--fg-muted); font-size: 13px; margin-bottom: 16px; }
+  .searchbar { display: flex; gap: 10px; margin-bottom: 16px; }
+  .search-input {
+    flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-input); color: var(--fg); font-size: 14px;
+  }
+  .button {
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+  }
+  .button-primary { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
+  .button-secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-fg); }
+  .status { font-size: 13px; color: var(--fg-muted); margin-bottom: 12px; min-height: 18px; white-space: pre-wrap; }
+  .results {
+    display: grid; gap: 12px; overflow-y: auto; min-height: 0; flex: 1;
+    padding-right: 4px;
+  }
+  .card {
+    border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-card);
+    padding: 14px;
+  }
+  .card-header { display: flex; justify-content: space-between; gap: 10px; align-items: start; margin-bottom: 8px; }
+  .card-title { font-size: 15px; font-weight: 700; }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--chip-bg); color: var(--chip-fg); font-size: 11px; font-weight: 600; }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 8px; }
+  .snippet {
+    font-size: 13px; line-height: 1.5; color: var(--fg-secondary); white-space: pre-wrap;
+    background: rgba(127,127,127,0.08); border-radius: 8px; padding: 10px; margin-bottom: 10px;
+  }
+  .actions { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .score { font-size: 12px; color: var(--fg-muted); }
+  .empty { padding: 18px; border: 1px dashed var(--border); border-radius: 10px; color: var(--fg-muted); text-align: center; }
+</html:style>
+
+<html:div id="root"></html:div>
+
+<script type="application/javascript">
+<![CDATA[
+(function() {
+  const args = window.arguments[0];
+  const root = document.getElementById("root");
+  let currentQuery = args.initialQuery || "";
+
+  const htmlNS = "http://www.w3.org/1999/xhtml";
+  const el = (tag, className, text) => {
+    const node = document.createElementNS(htmlNS, tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  const container = el("div", "container");
+  const header = el("div", "header", args.mode === "paper" ? `Search: ${args.paperTitle}` : "Search Indexed Papers");
+  const subheader = el(
+    "div",
+    "subheader",
+    args.mode === "paper"
+      ? "Semantic search scoped to the active indexed paper."
+      : "Semantic search across all indexed papers."
+  );
+
+  const searchbar = el("div", "searchbar");
+  const input = el("input", "search-input");
+  input.setAttribute("type", "text");
+  input.setAttribute("placeholder", args.mode === "paper" ? "Search this paper..." : "Search indexed papers...");
+  input.value = currentQuery;
+
+  const submit = el("button", "button button-primary", "Search");
+  const closeBtn = el("button", "button button-secondary", "Close");
+  closeBtn.addEventListener("click", () => window.close());
+  searchbar.append(input, submit, closeBtn);
+
+  const status = el("div", "status");
+  const results = el("div", "results");
+
+  async function runSearch() {
+    const query = input.value.trim();
+    currentQuery = query;
+    if (!query) {
+      status.textContent = "Enter a search query.";
+      results.replaceChildren(el("div", "empty", "No query yet."));
+      return;
+    }
+
+    status.textContent = "Searching…";
+    results.replaceChildren();
+
+    try {
+      const response = await args.searchFn(query);
+      const threshold = response.threshold_lowered
+        ? ` Threshold lowered to ${response.threshold_used.toFixed(2)}.`
+        : "";
+      status.textContent = `${response.results.length} result(s) in ${response.duration_ms} ms.${threshold}`;
+
+      if (!response.results.length) {
+        results.replaceChildren(el("div", "empty", "No matching results."));
+        return;
+      }
+
+      const nodes = response.results.map((result) => {
+        const card = el("div", "card");
+        const cardHeader = el("div", "card-header");
+        const titleWrap = el("div");
+        titleWrap.appendChild(el("div", "card-title", result.paperTitle || result.paperId || result.file_path));
+        const sourceLabel = result.sourceKind
+          ? `${result.sourceKind} • ${result.file_path}`
+          : result.file_path;
+        titleWrap.appendChild(el("div", "meta", `${sourceLabel} • lines ${result.start_line}-${result.end_line}`));
+
+        const chip = el("span", "chip", result.language || "text");
+        cardHeader.append(titleWrap, chip);
+        card.appendChild(cardHeader);
+
+        const snippet = el("div", "snippet", result.content);
+        card.appendChild(snippet);
+
+        const actions = el("div", "actions");
+        actions.appendChild(el("div", "score", `Score ${result.score.toFixed(3)} • Vector ${result.vector_score.toFixed(3)}${result.keyword_score != null ? ` • Keyword ${result.keyword_score.toFixed(3)}` : ""}`));
+
+        const openBtn = el("button", "button button-secondary", "Open PDF");
+        openBtn.addEventListener("click", async () => {
+          openBtn.disabled = true;
+          try {
+            await args.openResultFn(result, currentQuery);
+          } catch (e) {
+            status.textContent = `Open failed: ${e}`;
+          } finally {
+            openBtn.disabled = false;
+          }
+        });
+        actions.appendChild(openBtn);
+        card.appendChild(actions);
+        return card;
+      });
+
+      results.replaceChildren(...nodes);
+    } catch (e) {
+      status.textContent = `Search failed: ${e}`;
+      results.replaceChildren(el("div", "empty", "Search request failed."));
+    }
+  }
+
+  submit.addEventListener("click", () => { void runSearch(); });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void runSearch();
+    }
+  });
+
+  container.append(header, subheader, searchbar, status, results);
+  root.appendChild(container);
+  results.replaceChildren(el("div", "empty", "Enter a query to search indexed papers."));
+  setTimeout(() => input.focus(), 0);
+})();
+]]>
+</script>
+</window>

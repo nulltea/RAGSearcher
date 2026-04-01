@@ -8,6 +8,7 @@
 import { McpClient } from "./mcp/client";
 import { addMenuToWindow, removeMenuFromWindow } from "./modules/menu";
 import { registerItemPane, unregisterItemPane } from "./modules/item-pane";
+import { addSearchUiToWindow, removeSearchUiFromWindow } from "./modules/search";
 
 let client: McpClient | null = null;
 let pluginId: string;
@@ -44,11 +45,13 @@ function init(params: { id: string; version: string; rootURI: string }): void {
 function addToWindow(window: Window): void {
   if (!client) return;
   try { addMenuToWindow(window, client); } catch (e) { Zotero.debug(`[RAG] addMenuToWindow failed: ${e}`); }
+  try { addSearchUiToWindow(window, client); } catch (e) { Zotero.debug(`[RAG] addSearchUiToWindow failed: ${e}`); }
 }
 
 /** Remove menu items from a Zotero window */
 function removeFromWindow(window: Window): void {
   removeMenuFromWindow(window);
+  removeSearchUiFromWindow(window);
 }
 
 /** Add to all currently open windows */

@@ -4,12 +4,16 @@
 
 import type { McpClient } from "../mcp/client";
 import { getRagPaperId } from "../utils/zotero-item";
+import { addActivePaperSearchMenuItem } from "./search";
 import { uploadSelectedItem } from "./upload";
 import { extractAlgorithms, viewAlgorithms } from "./extraction";
 import { extractPatterns, viewPatterns } from "./pattern-extraction";
 
 const MENU_IDS = {
+  menu: "zotero-itemmenu-rag-menu",
+  popup: "zotero-itemmenu-rag-popup",
   upload: "zotero-itemmenu-rag-upload",
+  searchPaper: "zotero-itemmenu-rag-search-paper",
   extractPatterns: "zotero-itemmenu-rag-extract-patterns",
   extract: "zotero-itemmenu-rag-extract",
   viewPatterns: "zotero-itemmenu-rag-view-patterns",
@@ -31,13 +35,23 @@ export function addMenuToWindow(window: Window, client: McpClient): void {
   separator.id = MENU_IDS.separator;
   menu.appendChild(separator);
 
+  const submenu = doc.createXULElement("menu");
+  submenu.id = MENU_IDS.menu;
+  submenu.setAttribute("label", "RAG Library");
+  menu.appendChild(submenu);
+
+  const popup = doc.createXULElement("menupopup");
+  popup.id = MENU_IDS.popup;
+  submenu.appendChild(popup);
+  addActivePaperSearchMenuItem(doc, popup, client);
+
   const uploadItem = doc.createXULElement("menuitem");
   uploadItem.id = MENU_IDS.upload;
   uploadItem.setAttribute("label", "Upload to RAG Library");
   uploadItem.addEventListener("command", () => {
     void uploadSelectedItem(client);
   });
-  menu.appendChild(uploadItem);
+  popup.appendChild(uploadItem);
 
   const extractPatternsItem = doc.createXULElement("menuitem");
   extractPatternsItem.id = MENU_IDS.extractPatterns;
@@ -45,7 +59,7 @@ export function addMenuToWindow(window: Window, client: McpClient): void {
   extractPatternsItem.addEventListener("command", () => {
     void extractPatterns();
   });
-  menu.appendChild(extractPatternsItem);
+  popup.appendChild(extractPatternsItem);
 
   const extractItem = doc.createXULElement("menuitem");
   extractItem.id = MENU_IDS.extract;
@@ -53,7 +67,7 @@ export function addMenuToWindow(window: Window, client: McpClient): void {
   extractItem.addEventListener("command", () => {
     void extractAlgorithms(client);
   });
-  menu.appendChild(extractItem);
+  popup.appendChild(extractItem);
 
   const viewPatternsItem = doc.createXULElement("menuitem");
   viewPatternsItem.id = MENU_IDS.viewPatterns;
@@ -61,7 +75,7 @@ export function addMenuToWindow(window: Window, client: McpClient): void {
   viewPatternsItem.addEventListener("command", () => {
     void viewPatterns();
   });
-  menu.appendChild(viewPatternsItem);
+  popup.appendChild(viewPatternsItem);
 
   const viewItem = doc.createXULElement("menuitem");
   viewItem.id = MENU_IDS.view;
@@ -69,7 +83,7 @@ export function addMenuToWindow(window: Window, client: McpClient): void {
   viewItem.addEventListener("command", () => {
     void viewAlgorithms(client);
   });
-  menu.appendChild(viewItem);
+  popup.appendChild(viewItem);
 
   const listener = () => updateMenuVisibility(window);
   menu.addEventListener("popupshowing", listener);
@@ -98,36 +112,47 @@ function updateMenuVisibility(window: Window): void {
   if (!zoteroPane) return;
 
   const items = zoteroPane.getSelectedItems();
-  const singleItem = items.length === 1 ? items[0] : null;
-  const isRegular = singleItem?.isRegularItem() ?? false;
+  const regularItems = items.filter((item: Zotero.Item) => item?.isRegularItem?.());
+  const singleItem = regularItems.length === 1 ? regularItems[0] : null;
+  const hasRegularSelection = regularItems.length > 0;
 
+  const menuEl = doc.getElementById(MENU_IDS.menu);
+  const sepEl = doc.getElementById(MENU_IDS.separator);
   const uploadEl = doc.getElementById(MENU_IDS.upload);
+  const searchPaperEl = doc.getElementById(MENU_IDS.searchPaper);
   const extractPatternsEl = doc.getElementById(MENU_IDS.extractPatterns);
   const extractEl = doc.getElementById(MENU_IDS.extract);
   const viewPatternsEl = doc.getElementById(MENU_IDS.viewPatterns);
   const viewEl = doc.getElementById(MENU_IDS.view);
-  const sepEl = doc.getElementById(MENU_IDS.separator);
 
-  if (!isRegular || !singleItem) {
-    uploadEl?.setAttribute("hidden", "true");
-    extractPatternsEl?.setAttribute("hidden", "true");
-    extractEl?.setAttribute("hidden", "true");
-    viewPatternsEl?.setAttribute("hidden", "true");
-    viewEl?.setAttribute("hidden", "true");
+  if (!hasRegularSelection) {
+    menuEl?.setAttribute("hidden", "true");
     sepEl?.setAttribute("hidden", "true");
     return;
   }
 
   sepEl?.removeAttribute("hidden");
+  menuEl?.removeAttribute("hidden");
   uploadEl?.removeAttribute("hidden");
+
+  if (!singleItem) {
+    searchPaperEl?.setAttribute("hidden", "true");
+    extractPatternsEl?.setAttribute("hidden", "true");
+    extractEl?.setAttribute("hidden", "true");
+    viewPatternsEl?.setAttribute("hidden", "true");
+    viewEl?.setAttribute("hidden", "true");
+    return;
+  }
 
   const ragId = getRagPaperId(singleItem);
   if (ragId) {
+    searchPaperEl?.removeAttribute("hidden");
     extractPatternsEl?.removeAttribute("hidden");
     extractEl?.removeAttribute("hidden");
     viewPatternsEl?.removeAttribute("hidden");
     viewEl?.removeAttribute("hidden");
   } else {
+    searchPaperEl?.setAttribute("hidden", "true");
     extractPatternsEl?.setAttribute("hidden", "true");
     extractEl?.setAttribute("hidden", "true");
     viewPatternsEl?.setAttribute("hidden", "true");

@@ -66,6 +66,15 @@ export interface SearchPapersArgs {
   offset?: number;
 }
 
+export interface QueryRequest {
+  query: string;
+  path?: string;
+  project?: string;
+  limit?: number;
+  min_score?: number;
+  hybrid?: boolean;
+}
+
 // Response types from tool JSON output
 export interface IndexPaperResult {
   paper_id: string;
@@ -168,4 +177,24 @@ export interface SearchPapersResult {
   limit: number;
   offset: number;
   duration_ms: number;
+}
+
+export interface SemanticSearchResult {
+  file_path: string;
+  root_path?: string | null;
+  content: string;
+  score: number;
+  vector_score: number;
+  keyword_score?: number | null;
+  start_line: number;
+  end_line: number;
+  language: string;
+  project?: string | null;
+}
+
+export interface QueryResponse {
+  results: SemanticSearchResult[];
+  duration_ms: number;
+  threshold_used: number;
+  threshold_lowered: boolean;
 }
