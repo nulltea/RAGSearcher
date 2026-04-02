@@ -4,7 +4,7 @@
 
 import type { McpClient } from "../mcp/client";
 import type { PatternResult } from "../mcp/types";
-import { getRagPaperId } from "../utils/zotero-item";
+import { getRagPaperId, clearRagPaperId } from "../utils/zotero-item";
 import { uploadSelectedItem } from "./upload";
 import { extractAlgorithms } from "./extraction";
 import { extractPatterns, listPatterns, openPatternDialog } from "./pattern-extraction";
@@ -103,7 +103,31 @@ function renderPaneShell(body: HTMLElement, item: any, client: McpClient): void 
   }, FETCH_DELAY_MS);
 }
 
-function startPaneFetches(body: HTMLElement, item: any, client: McpClient, version: number): void {
+async function startPaneFetches(body: HTMLElement, item: any, client: McpClient, version: number): Promise<void> {
+  const isStale = (): boolean =>
+    !body.isConnected || renderVersions.get(body) !== version;
+
+  // Validate that the paper still exists on the server
+  const ragId = getRagPaperId(item);
+  if (!ragId) return;
+
+  try {
+    const papers = await client.searchPapers({ query: ragId, limit: 1 });
+    const stillExists = papers.papers.some((p) => p.id === ragId);
+    if (!stillExists && !isStale()) {
+      Zotero.debug(`[RAG] Paper ${ragId} no longer exists on server, clearing stale RAG-ID`);
+      await clearRagPaperId(item);
+      // Re-render as "not uploaded"
+      renderPaneShell(body, item, client);
+      return;
+    }
+  } catch (e) {
+    // Server unreachable — show what we have locally
+    Zotero.debug(`[RAG] Paper validation failed (server unreachable?): ${e}`);
+  }
+
+  if (isStale()) return;
+
   void loadPatterns(body, item, version);
   void loadAlgorithms(body, item, client, version);
 }
