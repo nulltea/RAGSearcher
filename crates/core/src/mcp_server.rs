@@ -1,7 +1,7 @@
+use crate::chunker::{ChunkInput, PdfChunkMeta, extract_pdf};
 use crate::client::RagClient;
 use crate::embedding::EmbeddingProvider;
 use crate::extraction::AlgorithmExtractor;
-use crate::indexer::{ChunkInput, extract_pdf};
 use crate::metadata::MetadataStore;
 use crate::metadata::models::{
     AlgorithmIORow, AlgorithmStepRow, PaperCreate, PaperStatus, PatternStatus,
@@ -302,7 +302,8 @@ impl RagMcpServer {
         let ext = original_filename
             .as_deref()
             .and_then(|f| f.rsplit('.').next())
-            .unwrap_or("pdf");
+            .unwrap_or("pdf")
+            .to_string();
 
         // Save file to upload dir
         let saved_path = self.upload_dir.join(format!("{}.{}", paper_id, ext));
@@ -369,22 +370,39 @@ impl RagMcpServer {
             .map_err(|e| format!("Failed to save text content: {}", e))?;
 
         // Chunk the content
-        let chunk_input = ChunkInput {
-            relative_path: format!("papers/{}", paper_id),
-            root_path: "papers".to_string(),
-            project: Some(paper_id.clone()),
-            extension: Some("md".to_string()),
-            language: Some("Markdown".to_string()),
-            content: content.clone(),
-            hash: {
-                use sha2::{Digest, Sha256};
-                let mut hasher = Sha256::new();
-                hasher.update(content.as_bytes());
-                format!("{:x}", hasher.finalize())
-            },
+        let content_hash = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(content.as_bytes());
+            format!("{:x}", hasher.finalize())
         };
 
-        let chunks = self.client.chunker.chunk_file(&chunk_input);
+        let chunks = if ext.eq_ignore_ascii_case("pdf") {
+            // Use context-aware chunker for PDFs (structure-aware parsing)
+            let pdf_meta = PdfChunkMeta {
+                relative_path: format!("papers/{}", paper_id),
+                root_path: "papers".to_string(),
+                project: Some(paper_id.clone()),
+                hash: content_hash,
+            };
+            let pdf_path = saved_path.clone();
+            let chunker = self.client.pdf_chunker.clone();
+            tokio::task::spawn_blocking(move || chunker.chunk_pdf(&pdf_path, &pdf_meta))
+                .await
+                .map_err(|e| format!("Chunking task error: {}", e))?
+                .map_err(|e| format!("PDF chunking failed: {:#}", e))?
+        } else {
+            let chunk_input = ChunkInput {
+                relative_path: format!("papers/{}", paper_id),
+                root_path: "papers".to_string(),
+                project: Some(paper_id.clone()),
+                extension: Some("md".to_string()),
+                language: Some("Markdown".to_string()),
+                content: content.clone(),
+                hash: content_hash,
+            };
+            self.client.chunker.chunk_file(&chunk_input)
+        };
         let chunk_count = if chunks.is_empty() {
             self.metadata
                 .update_paper_status(&paper_id, PaperStatus::Active, 0)
@@ -561,6 +579,9 @@ impl RagMcpServer {
                     file_hash: a.id.clone(),
                     indexed_at: chrono::Utc::now().timestamp(),
                     project: Some(format!("algorithm:{}", a.paper_id)),
+                    page_numbers: None,
+                    heading_context: None,
+                    element_types: None,
                 })
                 .collect();
 

@@ -28,11 +28,13 @@ collection_name = "code_embeddings"
 
 [embedding]
 # Embedding model to use. Supported models:
-#   - "all-MiniLM-L6-v2" (default, 384 dims, fast)
+#   - "jinaai/jina-embeddings-v2-base-en" (default, 768 dims, 8192 token context, high quality)
+#   - "all-MiniLM-L6-v2" (384 dims, fast, 256 token context)
 #   - "all-MiniLM-L12-v2" (384 dims, more accurate)
 #   - "BAAI/bge-base-en-v1.5" (768 dims, high quality)
 #   - "BAAI/bge-small-en-v1.5" (384 dims, balanced)
-model_name = "all-MiniLM-L6-v2"
+# Uses CoreML (Metal) acceleration on Apple Silicon.
+model_name = "jinaai/jina-embeddings-v2-base-en"
 
 # Number of texts to process in each embedding batch
 # Smaller batches respond faster to cancellation but may be less efficient

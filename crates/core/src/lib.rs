@@ -37,7 +37,7 @@ pub mod embedding;
 pub mod error;
 
 /// Paper text chunking and PDF extraction
-pub mod indexer;
+pub mod chunker;
 
 /// Path normalization and utility functions
 pub mod paths;

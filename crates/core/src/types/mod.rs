@@ -59,6 +59,12 @@ pub struct SearchResult {
     pub language: String,
     /// Optional project name for multi-project support
     pub project: Option<String>,
+    /// Page numbers this chunk spans (for PDF context-aware chunking)
+    #[serde(default)]
+    pub page_numbers: Option<Vec<u32>>,
+    /// Heading context from the document structure
+    #[serde(default)]
+    pub heading_context: Option<String>,
 }
 
 /// Response from query operation
@@ -348,6 +354,15 @@ pub struct ChunkMetadata {
     pub file_hash: String,
     /// Timestamp when indexed
     pub indexed_at: i64,
+    /// Page numbers this chunk spans (for PDF context-aware chunking)
+    #[serde(default)]
+    pub page_numbers: Option<Vec<u32>>,
+    /// Heading context from the document structure
+    #[serde(default)]
+    pub heading_context: Option<String>,
+    /// Element types in this chunk (e.g., "Paragraph", "Table")
+    #[serde(default)]
+    pub element_types: Option<Vec<String>>,
 }
 
 impl QueryRequest {
@@ -471,6 +486,8 @@ mod tests {
             end_line: 10,
             language: "Markdown".to_string(),
             project: Some("test-project".to_string()),
+            page_numbers: None,
+            heading_context: None,
         };
         assert_eq!(result.file_path, "test.md");
     }
@@ -487,6 +504,9 @@ mod tests {
             extension: Some("md".to_string()),
             file_hash: "abc123".to_string(),
             indexed_at: 1234567890,
+            page_numbers: None,
+            heading_context: None,
+            element_types: None,
         };
         assert_eq!(meta.file_path, "test.md");
     }

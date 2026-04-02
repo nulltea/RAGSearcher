@@ -148,6 +148,8 @@ impl LanceVectorDB {
             Field::new("indexed_at", DataType::Utf8, false),
             Field::new("content", DataType::Utf8, false),
             Field::new("project", DataType::Utf8, true),
+            Field::new("page_numbers", DataType::Utf8, true),
+            Field::new("heading_context", DataType::Utf8, true),
         ]))
     }
 
@@ -240,6 +242,22 @@ impl LanceVectorDB {
                 .map(|m| m.project.as_deref())
                 .collect::<Vec<_>>(),
         );
+        let page_numbers_array = StringArray::from(
+            metadata
+                .iter()
+                .map(|m| {
+                    m.page_numbers
+                        .as_ref()
+                        .map(|pn| serde_json::to_string(pn).unwrap_or_default())
+                })
+                .collect::<Vec<Option<String>>>(),
+        );
+        let heading_context_array = StringArray::from(
+            metadata
+                .iter()
+                .map(|m| m.heading_context.as_deref())
+                .collect::<Vec<_>>(),
+        );
 
         RecordBatch::try_new(
             schema,
@@ -256,6 +274,8 @@ impl LanceVectorDB {
                 Arc::new(indexed_at_array),
                 Arc::new(content_array),
                 Arc::new(project_array),
+                Arc::new(page_numbers_array),
+                Arc::new(heading_context_array),
             ],
         )
         .context("Failed to create RecordBatch")
@@ -562,6 +582,8 @@ impl VectorDatabase for LanceVectorDB {
                                     } else {
                                         Some(proj.value(idx).to_string())
                                     },
+                                    page_numbers: None,
+                                    heading_context: None,
                                 });
                             }
                             found = true;
@@ -676,6 +698,28 @@ impl VectorDatabase for LanceVectorDB {
                             }
                         }
 
+                        // Read optional page_numbers and heading_context
+                        let page_numbers = batch
+                            .column_by_name("page_numbers")
+                            .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+                            .and_then(|arr| {
+                                if arr.is_null(i) {
+                                    None
+                                } else {
+                                    serde_json::from_str(arr.value(i)).ok()
+                                }
+                            });
+                        let heading_context = batch
+                            .column_by_name("heading_context")
+                            .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+                            .and_then(|arr| {
+                                if arr.is_null(i) {
+                                    None
+                                } else {
+                                    Some(arr.value(i).to_string())
+                                }
+                            });
+
                         search_results.push(SearchResult {
                             score,
                             vector_score: score,
@@ -691,6 +735,8 @@ impl VectorDatabase for LanceVectorDB {
                             } else {
                                 Some(project_array.value(i).to_string())
                             },
+                            page_numbers,
+                            heading_context,
                         });
                     }
                 }

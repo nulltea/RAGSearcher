@@ -14,6 +14,9 @@ mod tests {
             extension: Some("rs".to_string()),
             file_hash: "test_hash_123".to_string(),
             indexed_at: 1234567890,
+            page_numbers: None,
+            heading_context: None,
+            element_types: None,
         }
     }
 
@@ -416,8 +419,8 @@ mod tests {
     async fn test_create_schema() {
         let schema = LanceVectorDB::create_schema(384);
 
-        // Verify schema has expected fields (12 fields including root_path)
-        assert_eq!(schema.fields().len(), 12);
+        // Verify schema has expected fields (14 fields)
+        assert_eq!(schema.fields().len(), 14);
         assert_eq!(schema.field(0).name(), "vector");
         assert_eq!(schema.field(1).name(), "id");
         assert_eq!(schema.field(2).name(), "file_path");
@@ -430,6 +433,8 @@ mod tests {
         assert_eq!(schema.field(9).name(), "indexed_at");
         assert_eq!(schema.field(10).name(), "content");
         assert_eq!(schema.field(11).name(), "project");
+        assert_eq!(schema.field(12).name(), "page_numbers");
+        assert_eq!(schema.field(13).name(), "heading_context");
     }
 
     #[tokio::test]
@@ -447,7 +452,7 @@ mod tests {
 
         let batch = batch.unwrap();
         assert_eq!(batch.num_rows(), 2);
-        assert_eq!(batch.num_columns(), 12); // 12 columns including root_path
+        assert_eq!(batch.num_columns(), 14); // 14 columns
     }
 
     #[tokio::test]

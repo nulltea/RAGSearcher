@@ -1,17 +1,6 @@
-use super::CodeChunk;
+use crate::chunker::{ChunkInput, CodeChunk};
 use crate::types::ChunkMetadata;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-/// Input for text chunking (papers, documents)
-pub struct ChunkInput {
-    pub relative_path: String,
-    pub root_path: String,
-    pub project: Option<String>,
-    pub extension: Option<String>,
-    pub language: Option<String>,
-    pub content: String,
-    pub hash: String,
-}
 
 /// Strategy for chunking text
 pub enum ChunkStrategy {
@@ -21,11 +10,11 @@ pub enum ChunkStrategy {
     SlidingWindow { size: usize, overlap: usize },
 }
 
-pub struct CodeChunker {
+pub struct FixedChunker {
     strategy: ChunkStrategy,
 }
 
-impl CodeChunker {
+impl FixedChunker {
     pub fn new(strategy: ChunkStrategy) -> Self {
         Self { strategy }
     }
@@ -79,6 +68,9 @@ impl CodeChunker {
                 extension: input.extension.clone(),
                 file_hash: input.hash.clone(),
                 indexed_at: timestamp,
+                page_numbers: None,
+                heading_context: None,
+                element_types: None,
             };
 
             chunks.push(CodeChunk { content, metadata });
@@ -131,6 +123,9 @@ impl CodeChunker {
                 extension: input.extension.clone(),
                 file_hash: input.hash.clone(),
                 indexed_at: timestamp,
+                page_numbers: None,
+                heading_context: None,
+                element_types: None,
             };
 
             chunks.push(CodeChunk { content, metadata });
@@ -146,7 +141,7 @@ impl CodeChunker {
     }
 }
 
-impl Default for CodeChunker {
+impl Default for FixedChunker {
     fn default() -> Self {
         Self::default_strategy()
     }
@@ -176,7 +171,7 @@ mod tests {
             .join("\n");
         let input = create_test_input(&content);
 
-        let chunker = CodeChunker::new(ChunkStrategy::FixedLines(10));
+        let chunker = FixedChunker::new(ChunkStrategy::FixedLines(10));
         let chunks = chunker.chunk_file(&input);
 
         assert_eq!(chunks.len(), 10);
@@ -194,7 +189,7 @@ mod tests {
             .join("\n");
         let input = create_test_input(&content);
 
-        let chunker = CodeChunker::new(ChunkStrategy::SlidingWindow {
+        let chunker = FixedChunker::new(ChunkStrategy::SlidingWindow {
             size: 10,
             overlap: 5,
         });
@@ -205,14 +200,14 @@ mod tests {
 
     #[test]
     fn test_default_strategy() {
-        let chunker = CodeChunker::default_strategy();
+        let chunker = FixedChunker::default_strategy();
         assert!(matches!(chunker.strategy, ChunkStrategy::FixedLines(50)));
     }
 
     #[test]
     fn test_empty_content() {
         let input = create_test_input("");
-        let chunker = CodeChunker::new(ChunkStrategy::FixedLines(10));
+        let chunker = FixedChunker::new(ChunkStrategy::FixedLines(10));
         let chunks = chunker.chunk_file(&input);
         assert_eq!(chunks.len(), 0);
     }
@@ -220,7 +215,7 @@ mod tests {
     #[test]
     fn test_whitespace_only() {
         let input = create_test_input("   \n\t\n   ");
-        let chunker = CodeChunker::new(ChunkStrategy::FixedLines(10));
+        let chunker = FixedChunker::new(ChunkStrategy::FixedLines(10));
         let chunks = chunker.chunk_file(&input);
         assert_eq!(chunks.len(), 0);
     }
@@ -228,7 +223,7 @@ mod tests {
     #[test]
     fn test_single_line() {
         let input = create_test_input("Hello world");
-        let chunker = CodeChunker::new(ChunkStrategy::FixedLines(10));
+        let chunker = FixedChunker::new(ChunkStrategy::FixedLines(10));
         let chunks = chunker.chunk_file(&input);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].metadata.start_line, 1);
@@ -241,7 +236,7 @@ mod tests {
         input.project = Some("test-project".to_string());
         input.hash = "abc123".to_string();
 
-        let chunker = CodeChunker::new(ChunkStrategy::FixedLines(10));
+        let chunker = FixedChunker::new(ChunkStrategy::FixedLines(10));
         let chunks = chunker.chunk_file(&input);
 
         assert_eq!(chunks.len(), 1);

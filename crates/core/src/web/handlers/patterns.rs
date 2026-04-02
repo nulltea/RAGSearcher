@@ -187,6 +187,9 @@ pub async fn submit_review(
                 file_hash: p.id.clone(),
                 indexed_at: chrono::Utc::now().timestamp(),
                 project: Some(format!("pattern:{}", p.paper_id)),
+                page_numbers: None,
+                heading_context: None,
+                element_types: None,
             })
             .collect();
 

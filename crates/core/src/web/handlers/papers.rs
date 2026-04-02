@@ -6,8 +6,8 @@ use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
+use crate::chunker::{ChunkInput, PdfChunkMeta, extract_pdf};
 use crate::embedding::EmbeddingProvider;
-use crate::indexer::{ChunkInput, extract_pdf};
 use crate::metadata::models::{PaperCreate, PaperListParams, PaperStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
@@ -151,13 +151,16 @@ pub async fn upload_paper(
     // Extract text content from file or use provided text
     let mut stored_file_path: Option<String> = None;
     let mut pdf_title: Option<String> = None;
+    let mut saved_pdf_path: Option<std::path::PathBuf> = None;
+    let file_ext = original_filename
+        .as_deref()
+        .and_then(|f| f.rsplit('.').next())
+        .unwrap_or("pdf")
+        .to_string();
 
     let content = if let Some(bytes) = file_bytes {
         // Save file to disk
-        let ext = original_filename
-            .as_deref()
-            .and_then(|f| f.rsplit('.').next())
-            .unwrap_or("pdf");
+        let ext = file_ext.as_str();
         let file_path = state.upload_dir.join(format!("{}.{}", paper_id, ext));
         tokio::fs::write(&file_path, &bytes)
             .await
@@ -167,6 +170,7 @@ pub async fn upload_paper(
             .canonicalize()
             .ok()
             .map(|p| p.to_string_lossy().to_string());
+        saved_pdf_path = Some(file_path.clone());
 
         if ext.eq_ignore_ascii_case("pdf") {
             let path = file_path.clone();
@@ -225,22 +229,41 @@ pub async fn upload_paper(
         .map_err(|e| ApiError::Internal(format!("Failed to save text content: {}", e)))?;
 
     // Chunk the content
-    let chunk_input = ChunkInput {
-        relative_path: format!("papers/{}", paper_id),
-        root_path: "papers".to_string(),
-        project: Some(paper_id.clone()),
-        extension: Some("md".to_string()),
-        language: Some("Markdown".to_string()),
-        content: content.clone(),
-        hash: {
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            hasher.update(content.as_bytes());
-            format!("{:x}", hasher.finalize())
-        },
+    let content_hash = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        format!("{:x}", hasher.finalize())
     };
 
-    let chunks = state.client.chunker.chunk_file(&chunk_input);
+    let chunks = if file_ext.eq_ignore_ascii_case("pdf") {
+        if let Some(pdf_path) = saved_pdf_path {
+            let pdf_meta = PdfChunkMeta {
+                relative_path: format!("papers/{}", paper_id),
+                root_path: "papers".to_string(),
+                project: Some(paper_id.clone()),
+                hash: content_hash,
+            };
+            let chunker = state.client.pdf_chunker.clone();
+            tokio::task::spawn_blocking(move || chunker.chunk_pdf(&pdf_path, &pdf_meta))
+                .await
+                .map_err(|e| ApiError::Internal(format!("Chunking task error: {}", e)))?
+                .map_err(|e| ApiError::Internal(format!("PDF chunking failed: {:#}", e)))?
+        } else {
+            Vec::new()
+        }
+    } else {
+        let chunk_input = ChunkInput {
+            relative_path: format!("papers/{}", paper_id),
+            root_path: "papers".to_string(),
+            project: Some(paper_id.clone()),
+            extension: Some("md".to_string()),
+            language: Some("Markdown".to_string()),
+            content: content.clone(),
+            hash: content_hash,
+        };
+        state.client.chunker.chunk_file(&chunk_input)
+    };
 
     if chunks.is_empty() {
         state

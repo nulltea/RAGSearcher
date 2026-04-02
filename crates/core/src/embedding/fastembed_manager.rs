@@ -3,33 +3,35 @@ use anyhow::{Context, Result};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use std::sync::RwLock;
 
-/// FastEmbed-based embedding provider using all-MiniLM-L6-v2
+/// FastEmbed-based embedding provider with CoreML acceleration on Apple Silicon.
 ///
 /// Uses RwLock for safe interior mutability since fastembed's embed() requires &mut self.
 pub struct FastEmbedManager {
     model: RwLock<TextEmbedding>,
     dimension: usize,
+    model_name_str: &'static str,
 }
 
 impl FastEmbedManager {
-    /// Create a new FastEmbedManager with the default model (all-MiniLM-L6-v2)
+    /// Create a new FastEmbedManager with the default model (jina-embeddings-v2-base-en)
     pub fn new() -> Result<Self> {
-        Self::with_model(EmbeddingModel::AllMiniLML6V2)
+        Self::with_model(EmbeddingModel::JinaEmbeddingsV2BaseEN)
     }
 
     /// Create a new FastEmbedManager from a model name string
     pub fn from_model_name(model_name: &str) -> Result<Self> {
         let model = match model_name {
+            "jinaai/jina-embeddings-v2-base-en" => EmbeddingModel::JinaEmbeddingsV2BaseEN,
             "all-MiniLM-L6-v2" => EmbeddingModel::AllMiniLML6V2,
             "all-MiniLM-L12-v2" => EmbeddingModel::AllMiniLML12V2,
             "BAAI/bge-base-en-v1.5" => EmbeddingModel::BGEBaseENV15,
             "BAAI/bge-small-en-v1.5" => EmbeddingModel::BGESmallENV15,
             _ => {
                 tracing::warn!(
-                    "Unknown model '{}', falling back to all-MiniLM-L6-v2",
+                    "Unknown model '{}', falling back to jinaai/jina-embeddings-v2-base-en",
                     model_name
                 );
-                EmbeddingModel::AllMiniLML6V2
+                EmbeddingModel::JinaEmbeddingsV2BaseEN
             }
         };
         Self::with_model(model)
@@ -39,22 +41,27 @@ impl FastEmbedManager {
     pub fn with_model(model: EmbeddingModel) -> Result<Self> {
         tracing::info!("Initializing FastEmbed model: {:?}", model);
 
-        // all-MiniLM-L6-v2 has 384 dimensions
-        let dimension = match model {
-            EmbeddingModel::AllMiniLML6V2 => 384,
-            EmbeddingModel::AllMiniLML12V2 => 384,
-            EmbeddingModel::BGEBaseENV15 => 768,
-            EmbeddingModel::BGESmallENV15 => 384,
-            _ => 384, // Default to 384 for unknown models
+        let (dimension, model_name_str) = match model {
+            EmbeddingModel::JinaEmbeddingsV2BaseEN => (768, "jinaai/jina-embeddings-v2-base-en"),
+            EmbeddingModel::AllMiniLML6V2 => (384, "all-MiniLM-L6-v2"),
+            EmbeddingModel::AllMiniLML12V2 => (384, "all-MiniLM-L12-v2"),
+            EmbeddingModel::BGEBaseENV15 => (768, "BAAI/bge-base-en-v1.5"),
+            EmbeddingModel::BGESmallENV15 => (384, "BAAI/bge-small-en-v1.5"),
+            _ => (384, "unknown"),
         };
 
         let cache_dir = crate::paths::PlatformPaths::cache_dir().join("fastembed");
         tracing::info!("FastEmbed cache dir: {}", cache_dir.display());
 
+        // Configure CoreML execution provider for Metal acceleration on Apple Silicon
+        let execution_providers = vec![ort::ep::CoreML::default().build()];
+        tracing::info!("Configured CoreML execution provider for Metal acceleration");
+
         let mut options = InitOptions::default();
         options.model_name = model;
         options.show_download_progress = true;
         options.cache_dir = cache_dir;
+        options.execution_providers = execution_providers;
 
         let embedding_model =
             TextEmbedding::try_new(options).context("Failed to initialize FastEmbed model")?;
@@ -62,6 +69,7 @@ impl FastEmbedManager {
         Ok(Self {
             model: RwLock::new(embedding_model),
             dimension,
+            model_name_str,
         })
     }
 }
@@ -96,7 +104,7 @@ impl EmbeddingProvider for FastEmbedManager {
     }
 
     fn model_name(&self) -> &str {
-        "all-MiniLM-L6-v2"
+        self.model_name_str
     }
 }
 
@@ -120,8 +128,8 @@ mod tests {
 
         let embeddings = manager.embed_batch(texts).unwrap();
         assert_eq!(embeddings.len(), 2);
-        assert_eq!(embeddings[0].len(), 384);
-        assert_eq!(embeddings[1].len(), 384);
+        assert_eq!(embeddings[0].len(), 768);
+        assert_eq!(embeddings[1].len(), 768);
     }
 
     #[test]
@@ -134,20 +142,20 @@ mod tests {
     #[test]
     fn test_dimension() {
         let manager = FastEmbedManager::new().unwrap();
-        assert_eq!(manager.dimension(), 384);
+        assert_eq!(manager.dimension(), 768);
     }
 
     #[test]
     fn test_model_name() {
         let manager = FastEmbedManager::new().unwrap();
-        assert_eq!(manager.model_name(), "all-MiniLM-L6-v2");
+        assert_eq!(manager.model_name(), "jinaai/jina-embeddings-v2-base-en");
     }
 
     #[test]
     fn test_default() {
         let manager = FastEmbedManager::default();
-        assert_eq!(manager.dimension(), 384);
-        assert_eq!(manager.model_name(), "all-MiniLM-L6-v2");
+        assert_eq!(manager.dimension(), 768);
+        assert_eq!(manager.model_name(), "jinaai/jina-embeddings-v2-base-en");
     }
 
     #[test]
@@ -156,7 +164,7 @@ mod tests {
         let texts = vec!["Hello world".to_string()];
         let embeddings = manager.embed_batch(texts).unwrap();
         assert_eq!(embeddings.len(), 1);
-        assert_eq!(embeddings[0].len(), 384);
+        assert_eq!(embeddings[0].len(), 768);
     }
 
     #[test]
@@ -166,7 +174,7 @@ mod tests {
         let embeddings = manager.embed_batch(texts).unwrap();
         assert_eq!(embeddings.len(), 10);
         for embedding in embeddings {
-            assert_eq!(embedding.len(), 384);
+            assert_eq!(embedding.len(), 768);
         }
     }
 

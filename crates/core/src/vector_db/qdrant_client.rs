@@ -379,6 +379,8 @@ impl VectorDatabase for QdrantVectorDB {
                 end_line,
                 language,
                 project,
+                page_numbers: None,
+                heading_context: None,
             });
         }
 

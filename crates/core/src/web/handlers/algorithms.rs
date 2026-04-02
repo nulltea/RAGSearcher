@@ -223,6 +223,9 @@ pub async fn submit_algorithm_review(
                 file_hash: a.id.clone(),
                 indexed_at: chrono::Utc::now().timestamp(),
                 project: Some(format!("algorithm:{}", a.paper_id)),
+                page_numbers: None,
+                heading_context: None,
+                element_types: None,
             })
             .collect();
 

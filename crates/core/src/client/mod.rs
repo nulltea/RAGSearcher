@@ -3,9 +3,9 @@
 //! This module provides the main client interface for using project-rag
 //! as a library for paper embedding and semantic search.
 
+use crate::chunker::{ContextAwareChunker, FixedChunker};
 use crate::config::Config;
 use crate::embedding::{EmbeddingProvider, FastEmbedManager};
-use crate::indexer::CodeChunker;
 use crate::types::*;
 use crate::vector_db::VectorDatabase;
 
@@ -33,7 +33,8 @@ pub struct RagClient {
     pub(crate) vector_db: Arc<QdrantVectorDB>,
     #[cfg(not(feature = "qdrant-backend"))]
     pub(crate) vector_db: Arc<LanceVectorDB>,
-    pub(crate) chunker: Arc<CodeChunker>,
+    pub(crate) chunker: Arc<FixedChunker>,
+    pub(crate) pdf_chunker: Arc<ContextAwareChunker>,
     pub(crate) config: Arc<Config>,
 }
 
@@ -107,13 +108,15 @@ impl RagClient {
             .await
             .context("Failed to initialize vector database collections")?;
 
-        // Create chunker with configured chunk size
-        let chunker = Arc::new(CodeChunker::default_strategy());
+        // Create chunkers
+        let chunker = Arc::new(FixedChunker::default_strategy());
+        let pdf_chunker = Arc::new(ContextAwareChunker::new());
 
         Ok(Self {
             embedding_provider,
             vector_db,
             chunker,
+            pdf_chunker,
             config: Arc::new(config),
         })
     }

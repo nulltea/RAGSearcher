@@ -111,7 +111,7 @@ fn default_collection_name() -> String {
 }
 
 fn default_model_name() -> String {
-    "all-MiniLM-L6-v2".to_string()
+    "jinaai/jina-embeddings-v2-base-en".to_string()
 }
 
 fn default_batch_size() -> usize {
