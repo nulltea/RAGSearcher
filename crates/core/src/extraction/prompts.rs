@@ -1,7 +1,8 @@
 /// Build the prompt for Pass 1: Evidence Inventory extraction.
-pub fn evidence_inventory_prompt(text: &str) -> String {
+/// Paper text is injected via --append-system-prompt-file (not in this prompt).
+pub fn evidence_inventory_prompt() -> String {
     format!(
-        r#"You are extracting concrete evidence from a research paper.
+        r#"You are extracting concrete evidence from a research paper provided in the system prompt.
 
 ## Your Task
 Extract 12-25 distinct pieces of evidence from the paper. Each piece must be a direct quote or specific finding that can be cited later.
@@ -55,13 +56,13 @@ Return ONLY a JSON object (no markdown fences):
 - Aim for 12-20 evidence items
 - Keep the total response under 4000 tokens
 
-## Paper Text
-{text}"#
+The full paper text is available in the system prompt above."#
     )
 }
 
 /// Build the prompt for Pass 2: Pattern Extraction with evidence citations.
-pub fn pattern_extraction_prompt(text: &str, evidence_json: &str) -> String {
+/// Paper text is injected via --append-system-prompt-file (not in this prompt).
+pub fn pattern_extraction_prompt(evidence_json: &str) -> String {
     format!(
         r#"You are extracting research patterns grounded in evidence.
 
@@ -114,8 +115,7 @@ Return ONLY a JSON object (no markdown fences):
 ## Evidence Inventory
 {evidence_json}
 
-## Paper Text
-{text}"#
+The full paper text is available in the system prompt above."#
     )
 }
 

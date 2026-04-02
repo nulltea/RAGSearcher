@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::{
-    CitationIssue, EvidenceInventory, flexible_string_vec, opt_string_or_json, string_or_json,
+    CitationIssue, flexible_string_vec, opt_string_or_json, string_or_json,
     string_or_json_default, usize_or_string,
 };
 
@@ -127,6 +127,5 @@ pub struct AlgorithmVerificationResult {
 #[derive(Debug, Clone)]
 pub struct AlgorithmExtractionResult {
     pub algorithms: Vec<ExtractedAlgorithm>,
-    pub evidence: EvidenceInventory,
     pub verification: Option<AlgorithmVerificationResult>,
 }

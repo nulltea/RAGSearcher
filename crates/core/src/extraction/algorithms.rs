@@ -7,7 +7,6 @@ use super::algorithm_types::{
     AlgorithmVerificationResult,
 };
 use super::claude_cli::ClaudeCli;
-use super::types::EvidenceInventory;
 
 pub struct AlgorithmExtractor {
     cli: ClaudeCli,
@@ -27,49 +26,21 @@ impl AlgorithmExtractor {
     }
 
     /// Run the 3-pass algorithm extraction pipeline.
-    /// If `evidence` is provided (from prior pattern extraction), reuses it.
+    /// `text_path` is the path to the extracted paper text file (injected via system prompt).
     pub async fn extract_algorithms(
         &self,
-        text: &str,
-        evidence: Option<&EvidenceInventory>,
+        text_path: &str,
     ) -> Result<AlgorithmExtractionResult> {
         let total_start = Instant::now();
-        let word_count = text.split_whitespace().count();
-        tracing::info!(
-            "Starting 3-pass algorithm extraction (text: {} chars, ~{} words)",
-            text.len(),
-            word_count,
-        );
-
-        // If no evidence provided, run evidence extraction first (reuse pattern pass 1)
-        let evidence = if let Some(ev) = evidence {
-            tracing::info!(
-                "Reusing existing evidence inventory ({} items)",
-                ev.evidence_items.len()
-            );
-            ev.clone()
-        } else {
-            tracing::info!("No existing evidence — running evidence extraction first (haiku)...");
-            let ev_prompt = super::prompts::evidence_inventory_prompt(text);
-            let ev_raw = self
-                .cli
-                .call_claude(&ev_prompt, "haiku")
-                .await
-                .context("Evidence inventory extraction failed")?;
-            serde_json::from_value::<EvidenceInventory>(ev_raw)
-                .context("Failed to parse evidence inventory JSON")?
-        };
-
-        let evidence_json = serde_json::to_string_pretty(&evidence)?;
+        tracing::info!("Starting 3-pass algorithm extraction (text: {})", text_path);
 
         // Pass 1: Algorithm Inventory (Haiku — identify algorithms)
         tracing::info!("Pass 1/3: Identifying algorithms (haiku)...");
         let pass1_start = Instant::now();
-        let inventory_prompt =
-            algorithm_prompts::algorithm_inventory_prompt(text, Some(&evidence_json));
+        let inventory_prompt = algorithm_prompts::algorithm_inventory_prompt();
         let inventory_raw = self
             .cli
-            .call_claude(&inventory_prompt, "haiku")
+            .call_claude_with_context(&inventory_prompt, "haiku", Some(text_path))
             .await
             .context("Pass 1 (algorithm inventory) failed")?;
         let inventory: AlgorithmInventory = serde_json::from_value(inventory_raw)
@@ -84,7 +55,6 @@ impl AlgorithmExtractor {
             tracing::info!("No algorithms found in paper — returning empty result");
             return Ok(AlgorithmExtractionResult {
                 algorithms: Vec::new(),
-                evidence,
                 verification: None,
             });
         }
@@ -94,10 +64,10 @@ impl AlgorithmExtractor {
         let pass2_start = Instant::now();
         let inventory_json = serde_json::to_string_pretty(&inventory)?;
         let extraction_prompt =
-            algorithm_prompts::algorithm_extraction_prompt(text, &evidence_json, &inventory_json);
+            algorithm_prompts::algorithm_extraction_prompt(&inventory_json);
         let algorithms_raw = self
             .cli
-            .call_claude(&extraction_prompt, "sonnet")
+            .call_claude_with_context(&extraction_prompt, "sonnet", Some(text_path))
             .await
             .context("Pass 2 (algorithm extraction) failed")?;
         let extraction: AlgorithmExtractionOutput = serde_json::from_value(algorithms_raw)
@@ -113,7 +83,7 @@ impl AlgorithmExtractor {
         let pass3_start = Instant::now();
         let algorithms_json = serde_json::to_string_pretty(&extraction)?;
         let verification_prompt =
-            algorithm_prompts::algorithm_verification_prompt(&evidence_json, &algorithms_json);
+            algorithm_prompts::algorithm_verification_prompt(&algorithms_json);
         let verification = match self.cli.call_claude(&verification_prompt, "haiku").await {
             Ok(v) => match serde_json::from_value::<AlgorithmVerificationResult>(v) {
                 Ok(vr) => {
@@ -153,7 +123,6 @@ impl AlgorithmExtractor {
 
         Ok(AlgorithmExtractionResult {
             algorithms: extraction.algorithms,
-            evidence,
             verification,
         })
     }

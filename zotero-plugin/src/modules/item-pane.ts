@@ -7,12 +7,22 @@ import type { PatternResult } from "../mcp/types";
 import { getRagPaperId, clearRagPaperId } from "../utils/zotero-item";
 import { uploadSelectedItem } from "./upload";
 import { extractAlgorithms } from "./extraction";
-import { extractPatterns, listPatterns, openPatternDialog } from "./pattern-extraction";
+import { checkPaperExists, extractPatterns, listPatterns, openPatternDialog } from "./pattern-extraction";
 import { openReviewDialog } from "./review-dialog";
 
 /** Register the RAG Library item pane section. Returns the section ID for cleanup. */
 const renderVersions = new WeakMap<HTMLElement, number>();
 const FETCH_DELAY_MS = 200;
+
+/** Store refresh callbacks so we can force re-render from outside */
+const refreshCallbacks = new Set<() => void>();
+
+/** Force all active pane sections to re-render (e.g. after upload changes RAG-ID) */
+export function refreshItemPane(): void {
+  for (const cb of refreshCallbacks) {
+    try { cb(); } catch (e) { Zotero.debug(`[RAG] refreshItemPane error: ${e}`); }
+  }
+}
 
 export function registerItemPane(client: McpClient, pluginId: string): string {
   const sectionId = Zotero.ItemPaneManager.registerSection({
@@ -26,12 +36,14 @@ export function registerItemPane(client: McpClient, pluginId: string): string {
       l10nID: "rag-itempane-header",
       icon: "chrome://zoterorag/content/icons/icon-20.png",
     },
-    onInit: ({ body }: { body: HTMLElement }) => {
+    onInit: ({ body, refresh }: { body: HTMLElement; refresh: () => void }) => {
       // Fluent l10n doesn't resolve for plugins — set label directly on the collapsible-section
       const section = body.closest("collapsible-section") || body.parentElement;
       if (section) {
         section.setAttribute("label", "RAG Library");
       }
+      // Store refresh callback for external triggers (e.g. after upload)
+      refreshCallbacks.add(refresh);
     },
     onRender: ({ body, item }: { body: HTMLElement; item: any }) => {
       try {
@@ -107,23 +119,21 @@ async function startPaneFetches(body: HTMLElement, item: any, client: McpClient,
   const isStale = (): boolean =>
     !body.isConnected || renderVersions.get(body) !== version;
 
-  // Validate that the paper still exists on the server
+  // Validate paper still exists via CLI (exact ID lookup, not text search)
   const ragId = getRagPaperId(item);
   if (!ragId) return;
 
   try {
-    const papers = await client.searchPapers({ query: ragId, limit: 1 });
-    const stillExists = papers.papers.some((p) => p.id === ragId);
-    if (!stillExists && !isStale()) {
-      Zotero.debug(`[RAG] Paper ${ragId} no longer exists on server, clearing stale RAG-ID`);
+    const exists = await checkPaperExists(ragId);
+    if (!exists && !isStale()) {
+      Zotero.debug(`[RAG] Paper ${ragId} no longer exists, clearing stale RAG-ID`);
       await clearRagPaperId(item);
-      // Re-render as "not uploaded"
       renderPaneShell(body, item, client);
       return;
     }
   } catch (e) {
-    // Server unreachable — show what we have locally
-    Zotero.debug(`[RAG] Paper validation failed (server unreachable?): ${e}`);
+    // CLI not available — proceed with what we have
+    Zotero.debug(`[RAG] check-paper failed (binary not installed?): ${e}`);
   }
 
   if (isStale()) return;

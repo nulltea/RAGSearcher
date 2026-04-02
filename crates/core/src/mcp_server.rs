@@ -461,20 +461,20 @@ impl RagMcpServer {
             .map_err(|e| format!("{:#}", e))?
             .ok_or_else(|| format!("Paper '{}' not found", req.paper_id))?;
 
-        // Load extracted text
+        // Verify text file exists
         let text_path = self.upload_dir.join(format!("{}.txt", req.paper_id));
-        let text = tokio::fs::read_to_string(&text_path).await.map_err(|e| {
-            format!(
-                "Paper text not found at {}. Was the paper uploaded correctly? Error: {}",
+        if !text_path.exists() {
+            return Err(format!(
+                "Paper text not found at {}. Was the paper uploaded correctly?",
                 text_path.display(),
-                e
-            )
-        })?;
+            ));
+        }
+        let text_path_str = text_path.to_string_lossy().to_string();
 
         // Run 3-pass extraction pipeline
         let result = self
             .algorithm_extractor
-            .extract_algorithms(&text, None)
+            .extract_algorithms(&text_path_str)
             .await
             .map_err(|e| format!("Algorithm extraction failed: {:#}", e))?;
 
@@ -612,7 +612,7 @@ impl RagMcpServer {
         let response = ExtractAlgorithmsResponse {
             paper_id: req.paper_id.clone(),
             algorithm_count: result.algorithms.len(),
-            evidence_count: result.evidence.evidence_items.len(),
+            evidence_count: 0,
             verification_status,
             duration_ms: start.elapsed().as_millis() as u64,
         };

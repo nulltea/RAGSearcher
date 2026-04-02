@@ -129,6 +129,13 @@ async function runCliCommand(args: string[]): Promise<string> {
   return stdout;
 }
 
+/** Check if a paper exists in the RAG library by ID */
+export async function checkPaperExists(paperId: string): Promise<boolean> {
+  const json = await runCliCommand(["check-paper", paperId]);
+  const result = JSON.parse(json) as { exists: boolean };
+  return result.exists;
+}
+
 /** List patterns for a paper via CLI */
 export async function listPatterns(paperId: string): Promise<PatternResult[]> {
   const json = await runCliCommand(["list-patterns", paperId]);

@@ -5,6 +5,7 @@
 import type { McpClient } from "../mcp/client";
 import { getItemMetadata, getPdfPath, getRagPaperId, setRagPaperId, clearRagPaperId } from "../utils/zotero-item";
 import { showProgress, showSuccess, showError } from "../utils/notify";
+import { refreshItemPane } from "./item-pane";
 
 type UploadOutcome = "uploaded" | "skipped" | "failed";
 
@@ -29,6 +30,11 @@ export async function uploadSelectedItem(client: McpClient): Promise<void> {
   const summary = await uploadItems(client, selectedItems);
   if (summary.results.length === 0) {
     return;
+  }
+
+  // Refresh item pane if any uploads succeeded (RAG-ID changed in Extra field)
+  if (summary.uploaded > 0) {
+    refreshItemPane();
   }
 
   if (summary.results.length === 1) {

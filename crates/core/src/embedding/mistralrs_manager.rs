@@ -2,6 +2,10 @@ use super::EmbeddingProvider;
 use anyhow::{Context, Result};
 use mistralrs::{EmbeddingModelBuilder, EmbeddingRequest, Model};
 
+/// Token-length bucket boundaries for batching chunks with similar lengths.
+/// Reduces padding waste by grouping similarly-sized inputs together.
+const TOKEN_BUCKETS: [usize; 4] = [128, 256, 384, 512];
+
 /// MistralRS-based embedding provider using EmbeddingGemma-300M with Metal acceleration.
 pub struct MistralRsEmbedder {
     model: Model,
@@ -28,6 +32,18 @@ impl MistralRsEmbedder {
     }
 }
 
+impl MistralRsEmbedder {
+    /// Assign a text to the smallest bucket that fits its approximate token count.
+    /// Uses char_count / 4 as a rough token estimate (avoids tokenizer overhead).
+    fn bucket_index(text: &str) -> usize {
+        let approx_tokens = text.len() / 4;
+        TOKEN_BUCKETS
+            .iter()
+            .position(|&b| approx_tokens <= b)
+            .unwrap_or(TOKEN_BUCKETS.len() - 1)
+    }
+}
+
 impl EmbeddingProvider for MistralRsEmbedder {
     fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         if texts.is_empty() {
@@ -37,19 +53,57 @@ impl EmbeddingProvider for MistralRsEmbedder {
         let total = texts.len();
         tracing::info!(total_texts = total, "Generating embeddings");
 
-        // Use tokio handle to bridge sync trait → async mistralrs API.
-        // Callers wrap this in spawn_blocking, so Handle::current() is available.
+        // Sort texts into token-length buckets to reduce padding waste.
+        // Track original indices so we can reassemble results in order.
+        let mut indexed: Vec<(usize, &String)> = texts.iter().enumerate().collect();
+        indexed.sort_by_key(|(_, t)| Self::bucket_index(t));
+
         let handle = tokio::runtime::Handle::current();
-        let embeddings = handle.block_on(async {
-            let request = EmbeddingRequest::builder().add_prompts(texts);
-            self.model
-                .generate_embeddings(request)
-                .await
-                .map_err(|e| anyhow::anyhow!("Embedding generation failed: {}", e))
-        })?;
+        let mut all_embeddings = vec![Vec::new(); total];
+
+        // Process each bucket as a separate request
+        let mut bucket_start = 0;
+        while bucket_start < indexed.len() {
+            let current_bucket = Self::bucket_index(indexed[bucket_start].1);
+            let bucket_end = indexed[bucket_start..]
+                .iter()
+                .position(|(_, t)| Self::bucket_index(t) != current_bucket)
+                .map(|p| bucket_start + p)
+                .unwrap_or(indexed.len());
+
+            let bucket_texts: Vec<String> = indexed[bucket_start..bucket_end]
+                .iter()
+                .map(|(_, t)| (*t).clone())
+                .collect();
+            let bucket_indices: Vec<usize> = indexed[bucket_start..bucket_end]
+                .iter()
+                .map(|(i, _)| *i)
+                .collect();
+
+            tracing::info!(
+                bucket = current_bucket,
+                bucket_size = bucket_texts.len(),
+                max_tokens = TOKEN_BUCKETS[current_bucket],
+                "Embedding bucket"
+            );
+
+            let embeddings = handle.block_on(async {
+                let request = EmbeddingRequest::builder().add_prompts(bucket_texts);
+                self.model
+                    .generate_embeddings(request)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Embedding generation failed: {}", e))
+            })?;
+
+            for (emb, &orig_idx) in embeddings.into_iter().zip(&bucket_indices) {
+                all_embeddings[orig_idx] = emb;
+            }
+
+            bucket_start = bucket_end;
+        }
 
         tracing::info!(total_texts = total, "Embedding complete");
-        Ok(embeddings)
+        Ok(all_embeddings)
     }
 
     fn dimension(&self) -> usize {

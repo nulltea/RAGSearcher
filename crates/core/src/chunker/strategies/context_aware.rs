@@ -25,12 +25,12 @@ pub struct ContextAwareChunker {
 }
 
 impl ContextAwareChunker {
-    /// Create with defaults tuned for snowflake-arctic-embed-m-long (2048 context).
+    /// Create with defaults tuned for EmbeddingGemma-300M (2048 context).
     pub fn new() -> Self {
         Self {
-            min_tokens: 350,
-            max_tokens: 700,
-            overlap_tokens: 64,
+            min_tokens: 256,
+            max_tokens: 448,
+            overlap_tokens: 48,
         }
     }
 

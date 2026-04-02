@@ -31,13 +31,13 @@ pub async fn extract_algorithms(
         .ok_or_else(|| ApiError::NotFound(format!("Paper '{}' not found", paper_id)))?;
 
     let text_path = state.upload_dir.join(format!("{}.txt", paper_id));
-    let text = tokio::fs::read_to_string(&text_path).await.map_err(|e| {
-        ApiError::Internal(format!(
-            "Paper text not found at {}. Was the paper uploaded correctly? Error: {}",
+    if !text_path.exists() {
+        return Err(ApiError::Internal(format!(
+            "Paper text not found at {}. Was the paper uploaded correctly?",
             text_path.display(),
-            e
-        ))
-    })?;
+        )));
+    }
+    let text_path_str = text_path.to_string_lossy().to_string();
 
     let extractor = state
         .algorithm_extractor
@@ -46,7 +46,7 @@ pub async fn extract_algorithms(
 
     // TODO: could load existing evidence from prior pattern extraction
     let result = extractor
-        .extract_algorithms(&text, None)
+        .extract_algorithms(&text_path_str)
         .await
         .map_err(|e| ApiError::Internal(format!("Algorithm extraction failed: {:#}", e)))?;
 
@@ -132,7 +132,7 @@ pub async fn extract_algorithms(
     Ok(Json(AlgorithmExtractResponse {
         paper_id,
         algorithms,
-        evidence_count: result.evidence.evidence_items.len(),
+        evidence_count: 0,
         verification_status,
         duration_ms: start.elapsed().as_millis() as u64,
     }))

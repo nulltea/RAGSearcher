@@ -31,15 +31,15 @@ pub async fn extract_patterns(
         .map_err(|e| ApiError::Internal(format!("{:#}", e)))?
         .ok_or_else(|| ApiError::NotFound(format!("Paper '{}' not found", paper_id)))?;
 
-    // Read saved text content
+    // Verify text file exists
     let text_path = state.upload_dir.join(format!("{}.txt", paper_id));
-    let text = tokio::fs::read_to_string(&text_path).await.map_err(|e| {
-        ApiError::Internal(format!(
-            "Paper text not found at {}. Was the paper uploaded correctly? Error: {}",
+    if !text_path.exists() {
+        return Err(ApiError::Internal(format!(
+            "Paper text not found at {}. Was the paper uploaded correctly?",
             text_path.display(),
-            e
-        ))
-    })?;
+        )));
+    }
+    let text_path_str = text_path.to_string_lossy().to_string();
 
     let extractor = state
         .extractor
@@ -48,7 +48,7 @@ pub async fn extract_patterns(
 
     // Run 3-pass extraction
     let result = extractor
-        .extract_patterns(&text)
+        .extract_patterns(&text_path_str)
         .await
         .map_err(|e| ApiError::Internal(format!("Extraction failed: {:#}", e)))?;
 

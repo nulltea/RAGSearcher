@@ -53,6 +53,12 @@ enum Commands {
         status: Option<String>,
     },
 
+    /// Check if a paper exists by ID (JSON output: { "exists": bool, "paper": ... })
+    CheckPaper {
+        /// Paper ID to check
+        paper_id: String,
+    },
+
     /// Show version and system information
     Version,
 }
@@ -68,6 +74,7 @@ async fn main() -> Result<()> {
         Some(Commands::Serve)
             | Some(Commands::ExtractPatterns { .. })
             | Some(Commands::ListPatterns { .. })
+            | Some(Commands::CheckPaper { .. })
             | None
     );
     if use_stderr {
@@ -128,6 +135,9 @@ async fn main() -> Result<()> {
         }
         Some(Commands::ListPatterns { paper_id, status }) => {
             list_patterns_cli(&paper_id, status.as_deref()).await?;
+        }
+        Some(Commands::CheckPaper { paper_id }) => {
+            check_paper_cli(&paper_id).await?;
         }
         Some(Commands::Serve) | None => {
             // Set up global panic handler
@@ -231,14 +241,15 @@ async fn extract_patterns_cli(paper_id: &str) -> Result<()> {
         .await?
         .ok_or_else(|| anyhow::anyhow!("Paper '{}' not found", paper_id))?;
 
-    // Read paper text
+    // Verify text file exists
     let text_path = upload_dir.join(format!("{}.txt", paper_id));
-    let text = tokio::fs::read_to_string(&text_path)
-        .await
-        .map_err(|e| anyhow::anyhow!("Paper text not found at {}: {}", text_path.display(), e))?;
+    if !text_path.exists() {
+        anyhow::bail!("Paper text not found at {}", text_path.display());
+    }
+    let text_path_str = text_path.to_string_lossy().to_string();
 
     // Run 3-pass extraction
-    let result = extractor.extract_patterns(&text).await?;
+    let result = extractor.extract_patterns(&text_path_str).await?;
 
     // Delete existing patterns (re-extraction)
     metadata.delete_patterns_by_paper(paper_id).await?;
@@ -344,6 +355,20 @@ async fn list_patterns_cli(paper_id: &str, status: Option<&str>) -> Result<()> {
     let count = patterns.len();
 
     let response = ListPatternsResponse { patterns, count };
+    println!("{}", serde_json::to_string_pretty(&response)?);
+    Ok(())
+}
+
+async fn check_paper_cli(paper_id: &str) -> Result<()> {
+    let data_dir = PlatformPaths::project_data_dir();
+    let db_path = data_dir.join("papers.db");
+    let metadata = MetadataStore::new(&db_path)?;
+
+    let paper = metadata.get_paper(paper_id).await?;
+    let response = serde_json::json!({
+        "exists": paper.is_some(),
+        "paper": paper,
+    });
     println!("{}", serde_json::to_string_pretty(&response)?);
     Ok(())
 }

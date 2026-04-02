@@ -30,24 +30,22 @@ impl PatternExtractor {
     }
 
     /// Run the 3-pass extraction pipeline on paper text.
-    pub async fn extract_patterns(&self, text: &str) -> Result<ExtractionResult> {
+    /// `text_path` is the path to the extracted paper text file (used via `@file` reference).
+    pub async fn extract_patterns(&self, text_path: &str) -> Result<ExtractionResult> {
         let total_start = Instant::now();
-        let text_len = text.len();
-        let word_count = text.split_whitespace().count();
         tracing::info!(
-            "Starting 3-pass extraction pipeline (text: {} chars, ~{} words)",
-            text_len,
-            word_count,
+            "Starting 3-pass extraction pipeline (text: @{})",
+            text_path,
         );
 
         // Pass 1: Evidence Inventory (Haiku — fast, cheap)
         tracing::info!("Pass 1/3: Extracting evidence inventory (haiku)...");
         let pass1_start = Instant::now();
-        let evidence_prompt = prompts::evidence_inventory_prompt(text);
+        let evidence_prompt = prompts::evidence_inventory_prompt();
         tracing::debug!("Pass 1 prompt: {} chars", evidence_prompt.len());
         let evidence_raw = self
             .cli
-            .call_claude(&evidence_prompt, "haiku")
+            .call_claude_with_context(&evidence_prompt, "haiku", Some(text_path))
             .await
             .context("Pass 1 (evidence inventory) failed")?;
         let raw_str = serde_json::to_string_pretty(&evidence_raw).unwrap_or_default();
@@ -82,11 +80,11 @@ impl PatternExtractor {
         tracing::info!("Pass 2/3: Extracting patterns with evidence citations (sonnet)...");
         let pass2_start = Instant::now();
         let evidence_json = serde_json::to_string_pretty(&evidence)?;
-        let extraction_prompt = prompts::pattern_extraction_prompt(text, &evidence_json);
+        let extraction_prompt = prompts::pattern_extraction_prompt(&evidence_json);
         tracing::debug!("Pass 2 prompt: {} chars", extraction_prompt.len());
         let patterns_raw = self
             .cli
-            .call_claude(&extraction_prompt, "sonnet")
+            .call_claude_with_context(&extraction_prompt, "sonnet", Some(text_path))
             .await
             .context("Pass 2 (pattern extraction) failed")?;
         let extraction: PatternExtractionOutput = serde_json::from_value(patterns_raw)

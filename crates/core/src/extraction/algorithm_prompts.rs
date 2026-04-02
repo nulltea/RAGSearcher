@@ -1,18 +1,7 @@
 /// Build the prompt for Pass 1: Algorithm Inventory — identify algorithms/protocols/schemes.
-pub fn algorithm_inventory_prompt(text: &str, evidence_json: Option<&str>) -> String {
-    let evidence_section = if let Some(ej) = evidence_json {
-        format!(
-            r#"
-## Evidence Inventory (from prior extraction)
-Use these [E#] IDs when referencing evidence.
-{ej}"#
-        )
-    } else {
-        String::new()
-    };
-
-    format!(
-        r#"You are identifying algorithms, protocols, and schemes in a research paper.
+/// Paper text is injected via --append-system-prompt-file (not in this prompt).
+pub fn algorithm_inventory_prompt() -> String {
+    r#"You are identifying algorithms, protocols, and schemes in a research paper provided in the system prompt.
 
 ## Your Task
 Find 1-5 distinct algorithms, protocols, schemes, or procedures described in the paper.
@@ -32,39 +21,31 @@ Only include items that have procedural/step-by-step content — skip vague ment
 
 ## Output Format
 Return ONLY a JSON object (no markdown fences):
-{{
+{
     "paper_title": "Title of the paper",
     "algorithms": [
-        {{
+        {
             "id": "A1",
             "name": "Algorithm Name",
             "description": "1-2 sentence summary of what it does",
             "location": "Section name or number",
-            "type": "algorithm|protocol|scheme|procedure",
-            "evidence_ids": ["E1", "E3"]
-        }}
+            "type": "algorithm|protocol|scheme|procedure"
+        }
     ],
     "paper_type": "empirical|theoretical|system|survey"
-}}
+}
 
 ## Guidelines
 - Use sequential IDs: A1, A2, A3, etc.
-- If evidence inventory is provided, cite relevant [E#] IDs
 - Keep the total response under 2000 tokens
-{evidence_section}
 
-## Paper Text
-{text}"#
-    )
+The full paper text is available in the system prompt above."#
+        .to_string()
 }
 
 /// Build the prompt for Pass 2: Algorithm Definition Extraction.
-/// This is the critical prompt — produces implementable step-by-step definitions.
-pub fn algorithm_extraction_prompt(
-    text: &str,
-    evidence_json: &str,
-    inventory_json: &str,
-) -> String {
+/// Paper text is injected via --append-system-prompt-file.
+pub fn algorithm_extraction_prompt(inventory_json: &str) -> String {
     format!(
         r#"You are extracting algorithm definitions that a software engineer will use to implement them WITHOUT access to the original paper.
 
@@ -74,12 +55,12 @@ Every mathematical formula, threshold, hyperparameter, and decision rule must be
 
 ## Your Task
 For each algorithm in the inventory below, produce a complete structured definition.
+The full paper text is available in the system prompt — use it to extract precise details.
 
 ## Step Format Rules
 - Each step is an **imperative action** ("Compute X", "Initialize Y", "For each Z, do W")
 - Include implementation-level detail in the `details` field
 - Use LaTeX for ALL math: `$...$` inline, `$$...$$` display
-- Every step that references paper content must cite [E#]
 
 ## LaTeX Conventions (token-efficient)
 - Vectors: `$\mathbf{{x}}$` or `$x_i$`
@@ -120,18 +101,16 @@ Return ONLY a JSON object (no markdown fences):
                 }}
             ],
             "preconditions": [
-                "Data is IID sampled from distribution $\\mathcal{{D}}$ [E2]",
-                "Loss function $\\ell$ is differentiable [E5]"
+                "Data is IID sampled from distribution $\\mathcal{{D}}$",
+                "Loss function $\\ell$ is differentiable"
             ],
             "complexity": "O(T \\cdot n \\cdot d) where T=rounds, n=samples, d=dimensions",
             "mathematical_notation": "$$\\theta_{{t+1}} = \\theta_t - \\eta \\nabla \\ell(\\theta_t; x, y)$$",
             "pseudocode": "function train(data, T, eta):\n  theta = init_params()\n  for t in 1..T:\n    for (x, y) in data:\n      grad = compute_gradient(theta, x, y)\n      theta = theta - eta * grad\n  return theta",
             "tags": ["optimization", "gradient-descent"],
-            "evidence_ids": ["E1", "E2", "E5"],
             "confidence": "high"
         }}
-    ],
-    "total_evidence_used": 5
+    ]
 }}
 
 ## Self-Containment Check
@@ -150,19 +129,13 @@ If any answer is "no", add the missing information.
 - Pseudocode should be language-agnostic (no specific syntax)
 - Keep the total response under 6000 tokens
 
-## Evidence Inventory
-{evidence_json}
-
 ## Algorithm Inventory
-{inventory_json}
-
-## Paper Text
-{text}"#
+{inventory_json}"#
     )
 }
 
 /// Build the prompt for Pass 3: Algorithm Verification.
-pub fn algorithm_verification_prompt(evidence_json: &str, algorithms_json: &str) -> String {
+pub fn algorithm_verification_prompt(algorithms_json: &str) -> String {
     format!(
         r#"You are verifying the quality and implementability of extracted algorithm definitions.
 
@@ -177,16 +150,12 @@ Review each algorithm definition for completeness, correctness, and self-contain
 - Are termination conditions explicit?
 - Are hyperparameters specified with concrete values or ranges?
 
-### 2. Citation Validity
-- Does each [E#] reference exist in the evidence inventory?
-- Flag citations to non-existent evidence as errors.
-
-### 3. Step Completeness
+### 2. Step Completeness
 - Are steps ordered correctly?
 - Are there missing intermediate steps?
 - Is mathematical notation consistent across steps?
 
-### 4. Mathematical Correctness
+### 3. Mathematical Correctness
 - Is LaTeX well-formed?
 - Are dimensions/types consistent?
 
@@ -201,14 +170,7 @@ Return ONLY a JSON object (no markdown fences):
             "severity": "error|warning"
         }}
     ],
-    "citation_issues": [
-        {{
-            "pattern_rank": 1,
-            "field": "steps",
-            "issue": "References [E99] which does not exist",
-            "severity": "error|warning"
-        }}
-    ],
+    "citation_issues": [],
     "overall_quality": "high|medium|low",
     "improvement_suggestions": ["Add learning rate schedule to Algorithm 1"]
 }}
@@ -220,9 +182,6 @@ Return ONLY a JSON object (no markdown fences):
 
 ## Guidelines
 - Be concise. Keep the total response under 2000 tokens.
-
-## Evidence Inventory
-{evidence_json}
 
 ## Extracted Algorithms
 {algorithms_json}"#
