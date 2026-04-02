@@ -42,7 +42,7 @@ impl ContextAwareChunker {
         }
 
         tracing::info!(text_chars = text.len(), "Loading tokenizer for chunking");
-        let tokenizer = Tokenizer::from_pretrained("Snowflake/snowflake-arctic-embed-m-long", None)
+        let tokenizer = Tokenizer::from_pretrained("google/embeddinggemma-300m", None)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
 
         let config = ChunkConfig::new(self.min_tokens..self.max_tokens)

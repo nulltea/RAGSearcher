@@ -5,7 +5,7 @@
 
 use crate::chunker::{ContextAwareChunker, FixedChunker};
 use crate::config::Config;
-use crate::embedding::{EmbeddingProvider, FastEmbedManager};
+use crate::embedding::{EmbeddingProvider, MistralRsEmbedder};
 use crate::types::*;
 use crate::vector_db::VectorDatabase;
 
@@ -28,7 +28,7 @@ use std::time::Instant;
 /// directly as a library or wrapped by the MCP server.
 #[derive(Clone)]
 pub struct RagClient {
-    pub(crate) embedding_provider: Arc<FastEmbedManager>,
+    pub(crate) embedding_provider: Arc<MistralRsEmbedder>,
     #[cfg(feature = "qdrant-backend")]
     pub(crate) vector_db: Arc<QdrantVectorDB>,
     #[cfg(not(feature = "qdrant-backend"))]
@@ -40,7 +40,7 @@ pub struct RagClient {
 
 impl RagClient {
     /// Get the embedding provider
-    pub fn embedding_provider(&self) -> &Arc<FastEmbedManager> {
+    pub fn embedding_provider(&self) -> &Arc<MistralRsEmbedder> {
         &self.embedding_provider
     }
 
@@ -69,9 +69,10 @@ impl RagClient {
         tracing::debug!("Embedding model: {}", config.embedding.model_name);
         tracing::debug!("Chunk size: {}", config.indexing.chunk_size);
 
-        // Initialize embedding provider with configured model
+        // Initialize embedding provider
         let embedding_provider = Arc::new(
-            FastEmbedManager::from_model_name(&config.embedding.model_name)
+            MistralRsEmbedder::new()
+                .await
                 .context("Failed to initialize embedding provider")?,
         );
 

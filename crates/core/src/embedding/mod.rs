@@ -1,6 +1,6 @@
-mod fastembed_manager;
+mod mistralrs_manager;
 
-pub use fastembed_manager::FastEmbedManager;
+pub use mistralrs_manager::MistralRsEmbedder;
 
 use anyhow::Result;
 
