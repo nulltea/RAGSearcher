@@ -1,12 +1,11 @@
 use crate::chunker::CodeChunk;
 use crate::types::ChunkMetadata;
 use anyhow::{Context, Result};
-use oxidize_pdf::parser::PdfDocument;
-use oxidize_pdf::pipeline::{HybridChunkConfig, MergePolicy};
-use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+use text_splitter::{ChunkConfig, MarkdownSplitter};
+use tokenizers::Tokenizer;
 
-/// Metadata needed to construct CodeChunks from PDF parsing results
+/// Metadata needed to construct CodeChunks from PDF text
 pub struct PdfChunkMeta {
     pub relative_path: String,
     pub root_path: String,
@@ -14,59 +13,59 @@ pub struct PdfChunkMeta {
     pub hash: String,
 }
 
-/// Context-aware PDF chunker using oxidize-pdf's structure-aware parsing.
+/// Content-aware PDF chunker using MarkdownSplitter with Hugging Face tokenizer.
 ///
-/// Extracts document structure (headings, paragraphs, tables) directly from PDF
-/// and produces chunks that respect semantic boundaries. Each chunk carries heading
-/// context for better embedding quality.
+/// Splits extracted PDF markdown at heading/section boundaries while respecting
+/// token limits of the embedding model. Uses the actual model tokenizer for
+/// accurate token counting.
 pub struct ContextAwareChunker {
-    config: HybridChunkConfig,
+    min_tokens: usize,
+    max_tokens: usize,
+    overlap_tokens: usize,
 }
 
 impl ContextAwareChunker {
-    /// Create with defaults tuned for jina-embeddings-v2-base-en (8192 token limit).
-    ///
-    /// - `max_tokens: 512` — good balance for retrieval granularity with long-context model
-    /// - `overlap_tokens: 50` — cross-chunk retrieval continuity
-    /// - `propagate_headings: true` — each chunk gets its section heading
-    /// - `merge_policy: AnyInlineContent` — paragraphs+lists merge within sections
+    /// Create with defaults tuned for snowflake-arctic-embed-m-long (2048 context).
     pub fn new() -> Self {
         Self {
-            config: HybridChunkConfig {
-                max_tokens: 512,
-                overlap_tokens: 50,
-                merge_adjacent: true,
-                propagate_headings: true,
-                merge_policy: MergePolicy::AnyInlineContent,
-            },
+            min_tokens: 350,
+            max_tokens: 700,
+            overlap_tokens: 64,
         }
     }
 
-    pub fn with_config(config: HybridChunkConfig) -> Self {
-        Self { config }
-    }
+    /// Chunk pre-extracted PDF markdown using heading-aware splitting.
+    #[tracing::instrument(skip(self, text, meta), fields(text_len = text.len()))]
+    pub fn chunk_text(&self, text: &str, meta: &PdfChunkMeta) -> Result<Vec<CodeChunk>> {
+        if text.trim().is_empty() {
+            return Ok(Vec::new());
+        }
 
-    /// Chunk a PDF file directly using structure-aware parsing.
-    pub fn chunk_pdf(&self, path: &Path, meta: &PdfChunkMeta) -> Result<Vec<CodeChunk>> {
-        let doc = PdfDocument::open(path)
-            .map_err(|e| anyhow::anyhow!("{}", e))
-            .context("Failed to open PDF for context-aware chunking")?;
+        tracing::info!(text_chars = text.len(), "Loading tokenizer for chunking");
+        let tokenizer = Tokenizer::from_pretrained("Snowflake/snowflake-arctic-embed-m-long", None)
+            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
 
-        let rag_chunks = doc
-            .rag_chunks_with(self.config.clone())
-            .map_err(|e| anyhow::anyhow!("{}", e))
-            .context("Failed to extract RAG chunks from PDF")?;
+        let config = ChunkConfig::new(self.min_tokens..self.max_tokens)
+            .with_sizer(tokenizer)
+            .with_overlap(self.overlap_tokens)
+            .context("Invalid chunk config (overlap >= capacity)")?
+            .with_trim(true);
+
+        let splitter = MarkdownSplitter::new(config);
+        tracing::info!(min_tokens = self.min_tokens, max_tokens = self.max_tokens, overlap = self.overlap_tokens, "Splitting markdown");
+        let text_chunks: Vec<&str> = splitter.chunks(text).collect();
+        tracing::info!(chunk_count = text_chunks.len(), "Markdown splitting complete");
 
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
 
-        let chunks = rag_chunks
+        let chunks = text_chunks
             .into_iter()
-            .filter(|rc| !rc.full_text.trim().is_empty())
-            .map(|rc| CodeChunk {
-                content: rc.full_text,
+            .filter(|c| !c.trim().is_empty())
+            .map(|c| CodeChunk {
+                content: c.to_string(),
                 metadata: ChunkMetadata {
                     file_path: meta.relative_path.clone(),
                     root_path: Some(meta.root_path.clone()),
@@ -77,9 +76,9 @@ impl ContextAwareChunker {
                     extension: Some("pdf".to_string()),
                     file_hash: meta.hash.clone(),
                     indexed_at: timestamp,
-                    page_numbers: Some(rc.page_numbers),
-                    heading_context: rc.heading_context,
-                    element_types: Some(rc.element_types),
+                    page_numbers: None,
+                    heading_context: None,
+                    element_types: None,
                 },
             })
             .collect();

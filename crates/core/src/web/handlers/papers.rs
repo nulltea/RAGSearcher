@@ -151,7 +151,7 @@ pub async fn upload_paper(
     // Extract text content from file or use provided text
     let mut stored_file_path: Option<String> = None;
     let mut pdf_title: Option<String> = None;
-    let mut saved_pdf_path: Option<std::path::PathBuf> = None;
+    let mut _saved_pdf_path: Option<std::path::PathBuf> = None;
     let file_ext = original_filename
         .as_deref()
         .and_then(|f| f.rsplit('.').next())
@@ -170,7 +170,7 @@ pub async fn upload_paper(
             .canonicalize()
             .ok()
             .map(|p| p.to_string_lossy().to_string());
-        saved_pdf_path = Some(file_path.clone());
+        _saved_pdf_path = Some(file_path.clone());
 
         if ext.eq_ignore_ascii_case("pdf") {
             let path = file_path.clone();
@@ -237,42 +237,18 @@ pub async fn upload_paper(
     };
 
     let chunks = if file_ext.eq_ignore_ascii_case("pdf") {
-        if let Some(pdf_path) = saved_pdf_path {
-            let pdf_meta = PdfChunkMeta {
-                relative_path: format!("papers/{}", paper_id),
-                root_path: "papers".to_string(),
-                project: Some(paper_id.clone()),
-                hash: content_hash.clone(),
-            };
-            let chunker = state.client.pdf_chunker.clone();
-            let pdf_result =
-                tokio::task::spawn_blocking(move || chunker.chunk_pdf(&pdf_path, &pdf_meta))
-                    .await
-                    .map_err(|e| {
-                        ApiError::Internal(format!("Chunking task error: {}", e))
-                    })?;
-            match pdf_result {
-                Ok(chunks) => chunks,
-                Err(e) => {
-                    tracing::warn!(
-                        "Context-aware PDF chunking failed, falling back to fixed chunker: {:#}",
-                        e
-                    );
-                    let chunk_input = ChunkInput {
-                        relative_path: format!("papers/{}", paper_id),
-                        root_path: "papers".to_string(),
-                        project: Some(paper_id.clone()),
-                        extension: Some("pdf".to_string()),
-                        language: Some("Text".to_string()),
-                        content: content.clone(),
-                        hash: content_hash,
-                    };
-                    state.client.chunker.chunk_file(&chunk_input)
-                }
-            }
-        } else {
-            Vec::new()
-        }
+        let pdf_meta = PdfChunkMeta {
+            relative_path: format!("papers/{}", paper_id),
+            root_path: "papers".to_string(),
+            project: Some(paper_id.clone()),
+            hash: content_hash.clone(),
+        };
+        let chunker = state.client.pdf_chunker.clone();
+        let text = content.clone();
+        tokio::task::spawn_blocking(move || chunker.chunk_text(&text, &pdf_meta))
+            .await
+            .map_err(|e| ApiError::Internal(format!("Chunking task error: {}", e)))?
+            .map_err(|e| ApiError::Internal(format!("PDF chunking failed: {:#}", e)))?
     } else {
         let chunk_input = ChunkInput {
             relative_path: format!("papers/{}", paper_id),

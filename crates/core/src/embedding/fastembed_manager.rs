@@ -13,14 +13,15 @@ pub struct FastEmbedManager {
 }
 
 impl FastEmbedManager {
-    /// Create a new FastEmbedManager with the default model (jina-embeddings-v2-base-en)
+    /// Create a new FastEmbedManager with the default model (snowflake-arctic-embed-m-long)
     pub fn new() -> Result<Self> {
-        Self::with_model(EmbeddingModel::JinaEmbeddingsV2BaseEN)
+        Self::with_model(EmbeddingModel::SnowflakeArcticEmbedMLong)
     }
 
     /// Create a new FastEmbedManager from a model name string
     pub fn from_model_name(model_name: &str) -> Result<Self> {
         let model = match model_name {
+            "snowflake/snowflake-arctic-embed-m-long" => EmbeddingModel::SnowflakeArcticEmbedMLong,
             "jinaai/jina-embeddings-v2-base-en" => EmbeddingModel::JinaEmbeddingsV2BaseEN,
             "all-MiniLM-L6-v2" => EmbeddingModel::AllMiniLML6V2,
             "all-MiniLM-L12-v2" => EmbeddingModel::AllMiniLML12V2,
@@ -28,10 +29,10 @@ impl FastEmbedManager {
             "BAAI/bge-small-en-v1.5" => EmbeddingModel::BGESmallENV15,
             _ => {
                 tracing::warn!(
-                    "Unknown model '{}', falling back to jinaai/jina-embeddings-v2-base-en",
+                    "Unknown model '{}', falling back to snowflake-arctic-embed-m-long",
                     model_name
                 );
-                EmbeddingModel::JinaEmbeddingsV2BaseEN
+                EmbeddingModel::SnowflakeArcticEmbedMLong
             }
         };
         Self::with_model(model)
@@ -42,6 +43,7 @@ impl FastEmbedManager {
         tracing::info!("Initializing FastEmbed model: {:?}", model);
 
         let (dimension, model_name_str) = match model {
+            EmbeddingModel::SnowflakeArcticEmbedMLong => (768, "snowflake/snowflake-arctic-embed-m-long"),
             EmbeddingModel::JinaEmbeddingsV2BaseEN => (768, "jinaai/jina-embeddings-v2-base-en"),
             EmbeddingModel::AllMiniLML6V2 => (384, "all-MiniLM-L6-v2"),
             EmbeddingModel::AllMiniLML12V2 => (384, "all-MiniLM-L12-v2"),
@@ -86,7 +88,9 @@ impl EmbeddingProvider for FastEmbedManager {
             return Ok(vec![]);
         }
 
-        tracing::debug!("Generating embeddings for {} texts", texts.len());
+        let total = texts.len();
+        let total_batches = total.div_ceil(BATCH_SIZE);
+        tracing::info!(total_texts = total, total_batches, "Generating embeddings");
 
         let mut model = self.model.write().unwrap_or_else(|poisoned| {
             tracing::warn!("FastEmbed model lock was poisoned, recovering...");
@@ -95,15 +99,17 @@ impl EmbeddingProvider for FastEmbedManager {
 
         // Batch to limit peak memory — Jina 768d with 512-token chunks uses ~200MB per batch of 8
         const BATCH_SIZE: usize = 8;
-        let mut all_embeddings = Vec::with_capacity(texts.len());
+        let mut all_embeddings = Vec::with_capacity(total);
 
         for (i, batch) in texts.chunks(BATCH_SIZE).enumerate() {
-            tracing::debug!("Embedding batch {}/{}", i + 1, texts.len().div_ceil(BATCH_SIZE));
+            let _span = tracing::info_span!("embed_batch", batch = i + 1, of = total_batches, size = batch.len()).entered();
+            tracing::info!("Embedding batch {}/{}", i + 1, total_batches);
             let batch_embeddings = model
                 .embed(batch.to_vec(), None)
                 .with_context(|| format!("Failed to generate embeddings for batch {}", i + 1))?;
             all_embeddings.extend(batch_embeddings);
         }
+        tracing::info!(total_texts = total, "Embedding complete");
 
         Ok(all_embeddings)
     }
@@ -157,14 +163,14 @@ mod tests {
     #[test]
     fn test_model_name() {
         let manager = FastEmbedManager::new().unwrap();
-        assert_eq!(manager.model_name(), "jinaai/jina-embeddings-v2-base-en");
+        assert_eq!(manager.model_name(), "snowflake/snowflake-arctic-embed-m-long");
     }
 
     #[test]
     fn test_default() {
         let manager = FastEmbedManager::default();
         assert_eq!(manager.dimension(), 768);
-        assert_eq!(manager.model_name(), "jinaai/jina-embeddings-v2-base-en");
+        assert_eq!(manager.model_name(), "snowflake/snowflake-arctic-embed-m-long");
     }
 
     #[test]
