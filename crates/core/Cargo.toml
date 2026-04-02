@@ -50,7 +50,7 @@ toml = "0.8"
 # PDF processing
 pdf-extract = "0.7"
 lopdf = "0.34"
-oxidize-pdf = "2.4"
+oxidize-pdf = { path = "/Users/timofey/repos/oxidize-pdf/oxidize-pdf-core" }
 # HTTP client for URL downloads
 reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
 # Web server

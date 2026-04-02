@@ -53,9 +53,15 @@ impl FastEmbedManager {
         let cache_dir = crate::paths::PlatformPaths::cache_dir().join("fastembed");
         tracing::info!("FastEmbed cache dir: {}", cache_dir.display());
 
-        // Configure CoreML execution provider for Metal acceleration on Apple Silicon
-        let execution_providers = vec![ort::ep::CoreML::default().build()];
-        tracing::info!("Configured CoreML execution provider for Metal acceleration");
+        // Configure CoreML execution provider for Metal/ANE acceleration on Apple Silicon.
+        // NeuralNetwork format (not MLProgram) — MLProgram crashes on Jina's dynamic shapes via MPS.
+        let coreml_cache = cache_dir.join("coreml_compiled");
+        let execution_providers = vec![ort::ep::CoreML::default()
+            .with_compute_units(ort::ep::coreml::ComputeUnits::All)
+            .with_model_format(ort::ep::coreml::ModelFormat::NeuralNetwork)
+            .with_model_cache_dir(coreml_cache.display().to_string())
+            .build()];
+        tracing::info!("Configured CoreML execution provider (All compute units, NeuralNetwork format)");
 
         let mut options = InitOptions::default();
         options.model_name = model;
@@ -82,21 +88,24 @@ impl EmbeddingProvider for FastEmbedManager {
 
         tracing::debug!("Generating embeddings for {} texts", texts.len());
 
-        // Acquire write lock safely. If the lock is poisoned (due to a panic while holding
-        // the lock), we recover by taking ownership of the inner value.
         let mut model = self.model.write().unwrap_or_else(|poisoned| {
             tracing::warn!("FastEmbed model lock was poisoned, recovering...");
             poisoned.into_inner()
         });
 
-        // Generate embeddings using the mutable reference
-        // Note: For timeout protection, wrap calls to this method in tokio::time::timeout
-        // at the async call site (e.g., in mcp_server/indexing.rs)
-        let embeddings = model
-            .embed(texts, None)
-            .context("Failed to generate embeddings")?;
+        // Batch to limit peak memory — Jina 768d with 512-token chunks uses ~200MB per batch of 8
+        const BATCH_SIZE: usize = 8;
+        let mut all_embeddings = Vec::with_capacity(texts.len());
 
-        Ok(embeddings)
+        for (i, batch) in texts.chunks(BATCH_SIZE).enumerate() {
+            tracing::debug!("Embedding batch {}/{}", i + 1, texts.len().div_ceil(BATCH_SIZE));
+            let batch_embeddings = model
+                .embed(batch.to_vec(), None)
+                .with_context(|| format!("Failed to generate embeddings for batch {}", i + 1))?;
+            all_embeddings.extend(batch_embeddings);
+        }
+
+        Ok(all_embeddings)
     }
 
     fn dimension(&self) -> usize {

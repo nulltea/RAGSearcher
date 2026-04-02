@@ -242,13 +242,34 @@ pub async fn upload_paper(
                 relative_path: format!("papers/{}", paper_id),
                 root_path: "papers".to_string(),
                 project: Some(paper_id.clone()),
-                hash: content_hash,
+                hash: content_hash.clone(),
             };
             let chunker = state.client.pdf_chunker.clone();
-            tokio::task::spawn_blocking(move || chunker.chunk_pdf(&pdf_path, &pdf_meta))
-                .await
-                .map_err(|e| ApiError::Internal(format!("Chunking task error: {}", e)))?
-                .map_err(|e| ApiError::Internal(format!("PDF chunking failed: {:#}", e)))?
+            let pdf_result =
+                tokio::task::spawn_blocking(move || chunker.chunk_pdf(&pdf_path, &pdf_meta))
+                    .await
+                    .map_err(|e| {
+                        ApiError::Internal(format!("Chunking task error: {}", e))
+                    })?;
+            match pdf_result {
+                Ok(chunks) => chunks,
+                Err(e) => {
+                    tracing::warn!(
+                        "Context-aware PDF chunking failed, falling back to fixed chunker: {:#}",
+                        e
+                    );
+                    let chunk_input = ChunkInput {
+                        relative_path: format!("papers/{}", paper_id),
+                        root_path: "papers".to_string(),
+                        project: Some(paper_id.clone()),
+                        extension: Some("pdf".to_string()),
+                        language: Some("Text".to_string()),
+                        content: content.clone(),
+                        hash: content_hash,
+                    };
+                    state.client.chunker.chunk_file(&chunk_input)
+                }
+            }
         } else {
             Vec::new()
         }

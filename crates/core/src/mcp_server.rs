@@ -378,19 +378,38 @@ impl RagMcpServer {
         };
 
         let chunks = if ext.eq_ignore_ascii_case("pdf") {
-            // Use context-aware chunker for PDFs (structure-aware parsing)
+            // Try context-aware chunker first, fall back to fixed chunker on failure
             let pdf_meta = PdfChunkMeta {
                 relative_path: format!("papers/{}", paper_id),
                 root_path: "papers".to_string(),
                 project: Some(paper_id.clone()),
-                hash: content_hash,
+                hash: content_hash.clone(),
             };
             let pdf_path = saved_path.clone();
             let chunker = self.client.pdf_chunker.clone();
-            tokio::task::spawn_blocking(move || chunker.chunk_pdf(&pdf_path, &pdf_meta))
-                .await
-                .map_err(|e| format!("Chunking task error: {}", e))?
-                .map_err(|e| format!("PDF chunking failed: {:#}", e))?
+            let pdf_result =
+                tokio::task::spawn_blocking(move || chunker.chunk_pdf(&pdf_path, &pdf_meta))
+                    .await
+                    .map_err(|e| format!("Chunking task error: {}", e))?;
+            match pdf_result {
+                Ok(chunks) => chunks,
+                Err(e) => {
+                    tracing::warn!(
+                        "Context-aware PDF chunking failed, falling back to fixed chunker: {:#}",
+                        e
+                    );
+                    let chunk_input = ChunkInput {
+                        relative_path: format!("papers/{}", paper_id),
+                        root_path: "papers".to_string(),
+                        project: Some(paper_id.clone()),
+                        extension: Some("pdf".to_string()),
+                        language: Some("Text".to_string()),
+                        content: content.clone(),
+                        hash: content_hash,
+                    };
+                    self.client.chunker.chunk_file(&chunk_input)
+                }
+            }
         } else {
             let chunk_input = ChunkInput {
                 relative_path: format!("papers/{}", paper_id),
