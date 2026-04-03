@@ -5,6 +5,7 @@ mod tests {
 
     fn create_test_metadata(file_path: &str, start_line: usize, end_line: usize) -> ChunkMetadata {
         ChunkMetadata {
+            chunk_id: None,
             root_path: None,
             file_path: file_path.to_string(),
             project: Some("test-project".to_string()),
@@ -194,6 +195,58 @@ mod tests {
         assert_eq!(results[0].file_path, "test.rs");
         // Hybrid search should have keyword score
         assert!(results[0].keyword_score.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_search_hybrid_materializes_bm25_only_chunk_by_chunk_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir
+            .path()
+            .join("lancedb")
+            .to_string_lossy()
+            .to_string();
+        let db = LanceVectorDB::with_path(&db_path).await.unwrap();
+        db.initialize(384).await.unwrap();
+
+        let embeddings = vec![
+            vec![0.10; 384],
+            vec![0.11; 384],
+            vec![0.12; 384],
+            vec![0.13; 384],
+            vec![0.14; 384],
+            vec![0.15; 384],
+            vec![0.95; 384],
+        ];
+        let metadata = (0..embeddings.len())
+            .map(|idx| create_test_metadata(&format!("doc{idx}.rs"), idx + 1, idx + 2))
+            .collect::<Vec<_>>();
+        let contents = vec![
+            "vector match one".to_string(),
+            "vector match two".to_string(),
+            "vector match three".to_string(),
+            "vector match four".to_string(),
+            "vector match five".to_string(),
+            "vector match six".to_string(),
+            "needle lexical hit".to_string(),
+        ];
+
+        db.store_embeddings(embeddings, metadata, contents, "/test/root")
+            .await
+            .unwrap();
+
+        let results = db
+            .search(vec![0.10; 384], "needle", 2, 0.5, None, None, true)
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        let lexical_hit = results
+            .iter()
+            .find(|result| result.content.contains("needle"))
+            .expect("hybrid results should contain the BM25-only chunk");
+        assert_eq!(lexical_hit.file_path, "doc6.rs");
+        assert!(lexical_hit.keyword_score.is_some());
+        assert!(lexical_hit.chunk_id.is_some());
     }
 
     #[tokio::test]

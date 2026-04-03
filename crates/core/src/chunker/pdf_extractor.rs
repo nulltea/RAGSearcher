@@ -120,11 +120,14 @@ fn extract_title_from_text(text: &str) -> Option<String> {
 /// Format extracted PDF text as Markdown
 /// This adds structure to the raw text extraction
 fn format_as_markdown(text: &str) -> String {
+    let lines = normalize_pdf_lines(text);
     let mut markdown = String::new();
     let mut in_table = false;
 
-    for line in text.lines() {
+    for (index, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
+        let prev_blank = index == 0 || lines[index - 1].trim().is_empty();
+        let next_blank = index + 1 == lines.len() || lines[index + 1].trim().is_empty();
 
         // Skip empty lines
         if trimmed.is_empty() {
@@ -156,7 +159,7 @@ fn format_as_markdown(text: &str) -> String {
             }
 
             // Detect headings (ALL CAPS lines or lines ending with :)
-            if is_likely_heading(trimmed) {
+            if should_emit_heading(trimmed, prev_blank, next_blank) {
                 let level = if trimmed.len() < 30 { "##" } else { "###" };
                 markdown.push_str(&format!("{} {}\n\n", level, trimmed.trim_end_matches(':')));
             } else {
@@ -167,6 +170,35 @@ fn format_as_markdown(text: &str) -> String {
     }
 
     markdown
+}
+
+fn normalize_pdf_lines(text: &str) -> Vec<String> {
+    let mut normalized = Vec::new();
+    let mut lines = text.lines().peekable();
+
+    while let Some(line) = lines.next() {
+        let mut current = line.trim_end().to_string();
+
+        while let Some(next) = lines.peek() {
+            let next_trimmed = next.trim_start();
+            if current.ends_with('-')
+                && next_trimmed
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_lowercase())
+            {
+                current.pop();
+                current.push_str(next_trimmed);
+                lines.next();
+            } else {
+                break;
+            }
+        }
+
+        normalized.push(current.trim_end().to_string());
+    }
+
+    normalized
 }
 
 /// Check if a line looks like a table row
@@ -212,11 +244,20 @@ fn create_table_separator(header: &str) -> String {
 
 /// Check if a line looks like a heading
 fn is_likely_heading(line: &str) -> bool {
-    // Check for ALL CAPS (at least 50% uppercase)
+    if contains_math_symbols(line) {
+        return false;
+    }
+
+    let trimmed = line.trim();
+    if has_section_prefix(trimmed) {
+        return true;
+    }
+
+    // Check for ALL CAPS (at least 80% uppercase)
     let uppercase_count = line.chars().filter(|c| c.is_uppercase()).count();
     let alpha_count = line.chars().filter(|c| c.is_alphabetic()).count();
 
-    if alpha_count > 0 {
+    if alpha_count >= 5 {
         let uppercase_ratio = uppercase_count as f64 / alpha_count as f64;
         if uppercase_ratio > 0.8 && line.len() < 100 {
             return true;
@@ -224,11 +265,43 @@ fn is_likely_heading(line: &str) -> bool {
     }
 
     // Check for lines ending with colon (section headers)
-    if line.ends_with(':') && line.len() < 80 && !line.contains("://") {
+    if alpha_count >= 4 && line.ends_with(':') && line.len() < 80 && !line.contains("://") {
         return true;
     }
 
     false
+}
+
+fn should_emit_heading(line: &str, prev_blank: bool, next_blank: bool) -> bool {
+    is_likely_heading(line) && prev_blank && next_blank
+}
+
+fn has_section_prefix(line: &str) -> bool {
+    let Some((prefix, rest)) = line.split_once(". ") else {
+        return false;
+    };
+
+    let is_alpha_prefix = prefix.len() == 1
+        && prefix
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase());
+    let is_roman_prefix = !prefix.is_empty()
+        && prefix
+            .chars()
+            .all(|ch| matches!(ch, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M'));
+
+    (is_alpha_prefix || is_roman_prefix)
+        && rest.chars().filter(|ch| ch.is_alphabetic()).count() >= 3
+}
+
+fn contains_math_symbols(line: &str) -> bool {
+    line.chars().any(|ch| {
+        matches!(
+            ch,
+            '[' | ']' | '{' | '}' | '⊕' | '⊗' | '∑' | '∈' | '←' | '→' | '≤' | '≥' | 'ℓ'
+        )
+    })
 }
 
 #[cfg(test)]
@@ -263,6 +336,8 @@ mod tests {
         assert!(is_likely_heading("INTRODUCTION"));
         assert!(is_likely_heading("Chapter 1:"));
         assert!(is_likely_heading("Section Title:"));
+        assert!(!is_likely_heading("B"));
+        assert!(!is_likely_heading("JxKA"));
         assert!(!is_likely_heading("This is a normal sentence"));
         assert!(!is_likely_heading("https://example.com"));
     }
@@ -282,5 +357,20 @@ mod tests {
         assert!(markdown.contains("| Name | Age | City |"));
         assert!(markdown.contains("| --- | --- | --- |"));
         assert!(markdown.contains("| John | 30 | NYC |"));
+    }
+
+    #[test]
+    fn test_heading_requires_blank_lines() {
+        assert!(should_emit_heading("A. Related work", true, true));
+        assert!(!should_emit_heading("A. Related work", false, true));
+    }
+
+    #[test]
+    fn test_format_as_markdown_does_not_promote_math_fragments() {
+        let text = "A. Related work\n\n[b]\nB\n\n0 ⊕ [b]\nB\n1 = b\n";
+        let markdown = format_as_markdown(text);
+        assert!(markdown.contains("## A. Related work"));
+        assert!(!markdown.contains("## B"));
+        assert!(!markdown.contains("## [b]"));
     }
 }

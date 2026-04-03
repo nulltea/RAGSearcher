@@ -33,7 +33,7 @@ fn default_limit() -> usize {
     10
 }
 fn default_min_score() -> f32 {
-    0.5
+    0.7
 }
 fn default_hybrid() -> bool {
     true

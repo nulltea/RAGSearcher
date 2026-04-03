@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use project_rag::RagClient;
-use project_rag::embedding::EmbeddingProvider;
+use project_rag::embedding::{EmbeddingProvider, format_retrieval_document};
 use project_rag::extraction::{AlgorithmExtractor, PatternExtractor};
 use project_rag::mcp_server::RagMcpServer;
 use project_rag::metadata::MetadataStore;
@@ -299,6 +299,7 @@ async fn extract_patterns_cli(paper_id: &str) -> Result<()> {
         let chunk_metadata: Vec<ChunkMetadata> = pending
             .iter()
             .map(|p| ChunkMetadata {
+                chunk_id: None,
                 file_path: format!("patterns/{}", p.paper_id),
                 root_path: Some("patterns".to_string()),
                 start_line: 0,
@@ -315,6 +316,10 @@ async fn extract_patterns_cli(paper_id: &str) -> Result<()> {
             .collect();
 
         let contents: Vec<String> = texts.clone();
+        let texts: Vec<String> = texts
+            .into_iter()
+            .map(|text| format_retrieval_document(None, &text))
+            .collect();
         let provider = client.embedding_provider().clone();
         let embeddings = tokio::task::spawn_blocking(move || provider.embed_batch(texts)).await??;
 

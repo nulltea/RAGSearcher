@@ -6,7 +6,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
 
-use crate::embedding::EmbeddingProvider;
+use crate::embedding::{EmbeddingProvider, format_retrieval_document};
 use crate::metadata::models::{AlgorithmIORow, AlgorithmStepRow, PatternStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
@@ -214,6 +214,7 @@ pub async fn submit_algorithm_review(
         let metadata: Vec<ChunkMetadata> = approved
             .iter()
             .map(|a| ChunkMetadata {
+                chunk_id: None,
                 file_path: format!("algorithms/{}", a.paper_id),
                 root_path: Some("algorithms".to_string()),
                 start_line: 0,
@@ -230,6 +231,10 @@ pub async fn submit_algorithm_review(
             .collect();
 
         let contents: Vec<String> = texts.clone();
+        let texts: Vec<String> = texts
+            .into_iter()
+            .map(|text| format_retrieval_document(None, &text))
+            .collect();
 
         let provider = state.client.embedding_provider.clone();
         let embeddings = tokio::task::spawn_blocking(move || provider.embed_batch(texts))

@@ -20,10 +20,27 @@ use arrow_schema::{DataType, Field, Schema};
 use futures::stream::TryStreamExt;
 use lancedb::Table;
 use lancedb::connection::Connection;
-use lancedb::query::{ExecutableQuery, QueryBase};
+use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, RwLock};
+
+const BM25_INDEX_PREFIX: &str = "bm25_v2_";
+
+#[derive(Debug, Clone)]
+struct StoredSearchRow {
+    chunk_id: String,
+    file_path: String,
+    root_path: Option<String>,
+    start_line: usize,
+    end_line: usize,
+    language: String,
+    content: String,
+    project: Option<String>,
+    page_numbers: Option<Vec<u32>>,
+    heading_context: Option<String>,
+}
 
 /// LanceDB vector database implementation (embedded, no server required)
 /// Includes BM25 hybrid search support using Tantivy with per-project indexes
@@ -52,9 +69,7 @@ impl LanceVectorDB {
             .await
             .context("Failed to connect to LanceDB")?;
 
-        // Initialize empty per-project BM25 index map
-        // BM25 indexes are created on-demand per root path
-        let bm25_indexes = Arc::new(RwLock::new(HashMap::new()));
+        let bm25_indexes = Arc::new(RwLock::new(Self::load_existing_bm25_indexes(db_path)?));
 
         Ok(Self {
             connection,
@@ -83,7 +98,287 @@ impl LanceVectorDB {
     /// Get the BM25 index path for a specific root path
     fn bm25_path_for_root(&self, root_path: &str) -> String {
         let hash = Self::hash_root_path(root_path);
-        format!("{}/bm25_{}", self.db_path, hash)
+        format!("{}/{}{}", self.db_path, BM25_INDEX_PREFIX, hash)
+    }
+
+    fn load_existing_bm25_indexes(db_path: &str) -> Result<HashMap<String, BM25Search>> {
+        let mut indexes = HashMap::new();
+        let db_path = Path::new(db_path);
+
+        if !db_path.exists() {
+            return Ok(indexes);
+        }
+
+        for entry in std::fs::read_dir(db_path).context("Failed to scan BM25 index directory")? {
+            let entry = entry.context("Failed to read BM25 index directory entry")?;
+            if !entry
+                .file_type()
+                .context("Failed to inspect BM25 index entry type")?
+                .is_dir()
+            {
+                continue;
+            }
+
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let Some(hash) = name.strip_prefix(BM25_INDEX_PREFIX) else {
+                continue;
+            };
+
+            let index = BM25Search::new(entry.path())
+                .with_context(|| format!("Failed to open BM25 index '{}'", name))?;
+            indexes.insert(hash.to_string(), index);
+        }
+
+        Ok(indexes)
+    }
+
+    fn ensure_chunk_ids(metadata: &mut [ChunkMetadata], contents: &[String]) {
+        for (index, (meta, content)) in metadata.iter_mut().zip(contents.iter()).enumerate() {
+            if meta.chunk_id.is_none() {
+                let mut hasher = Sha256::new();
+                hasher.update(meta.file_hash.as_bytes());
+                hasher.update(b"\0");
+                hasher.update(meta.file_path.as_bytes());
+                hasher.update(b"\0");
+                hasher.update(meta.start_line.to_le_bytes());
+                hasher.update(meta.end_line.to_le_bytes());
+                hasher.update(b"\0");
+                hasher.update(content.as_bytes());
+                hasher.update((index as u64).to_le_bytes());
+                meta.chunk_id = Some(format!("{:x}", hasher.finalize()));
+            }
+        }
+    }
+
+    fn escape_sql_string(value: &str) -> String {
+        value.replace('\'', "''")
+    }
+
+    fn build_sql_filter(
+        project: Option<&str>,
+        root_path: Option<&str>,
+        chunk_ids: Option<&[String]>,
+    ) -> Option<String> {
+        let mut filters = Vec::new();
+
+        if let Some(project) = project {
+            filters.push(format!("project = '{}'", Self::escape_sql_string(project)));
+        }
+
+        if let Some(root_path) = root_path {
+            filters.push(format!(
+                "root_path = '{}'",
+                Self::escape_sql_string(root_path)
+            ));
+        }
+
+        if let Some(chunk_ids) = chunk_ids.filter(|ids| !ids.is_empty()) {
+            let id_filter = chunk_ids
+                .iter()
+                .map(|id| format!("id = '{}'", Self::escape_sql_string(id)))
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            filters.push(format!("({})", id_filter));
+        }
+
+        (!filters.is_empty()).then(|| filters.join(" AND "))
+    }
+
+    fn row_from_batch(batch: &RecordBatch, idx: usize) -> Option<StoredSearchRow> {
+        let chunk_id_array = batch
+            .column_by_name("id")?
+            .as_any()
+            .downcast_ref::<StringArray>()?;
+        let file_path_array = batch
+            .column_by_name("file_path")?
+            .as_any()
+            .downcast_ref::<StringArray>()?;
+        let root_path_array = batch
+            .column_by_name("root_path")?
+            .as_any()
+            .downcast_ref::<StringArray>()?;
+        let start_line_array = batch
+            .column_by_name("start_line")?
+            .as_any()
+            .downcast_ref::<UInt32Array>()?;
+        let end_line_array = batch
+            .column_by_name("end_line")?
+            .as_any()
+            .downcast_ref::<UInt32Array>()?;
+        let language_array = batch
+            .column_by_name("language")?
+            .as_any()
+            .downcast_ref::<StringArray>()?;
+        let content_array = batch
+            .column_by_name("content")?
+            .as_any()
+            .downcast_ref::<StringArray>()?;
+        let project_array = batch
+            .column_by_name("project")?
+            .as_any()
+            .downcast_ref::<StringArray>()?;
+
+        let page_numbers = batch
+            .column_by_name("page_numbers")
+            .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+            .and_then(|arr| {
+                if arr.is_null(idx) {
+                    None
+                } else {
+                    serde_json::from_str(arr.value(idx)).ok()
+                }
+            });
+        let heading_context = batch
+            .column_by_name("heading_context")
+            .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+            .and_then(|arr| {
+                if arr.is_null(idx) {
+                    None
+                } else {
+                    Some(arr.value(idx).to_string())
+                }
+            });
+
+        Some(StoredSearchRow {
+            chunk_id: chunk_id_array.value(idx).to_string(),
+            file_path: file_path_array.value(idx).to_string(),
+            root_path: if root_path_array.is_null(idx) {
+                None
+            } else {
+                Some(root_path_array.value(idx).to_string())
+            },
+            start_line: start_line_array.value(idx) as usize,
+            end_line: end_line_array.value(idx) as usize,
+            language: language_array.value(idx).to_string(),
+            content: content_array.value(idx).to_string(),
+            project: if project_array.is_null(idx) {
+                None
+            } else {
+                Some(project_array.value(idx).to_string())
+            },
+            page_numbers,
+            heading_context,
+        })
+    }
+
+    fn row_to_search_result(
+        row: StoredSearchRow,
+        score: f32,
+        combined_score: Option<f32>,
+        vector_score: f32,
+        keyword_score: Option<f32>,
+    ) -> SearchResult {
+        SearchResult {
+            chunk_id: Some(row.chunk_id),
+            file_path: row.file_path,
+            root_path: row.root_path,
+            content: row.content,
+            score,
+            combined_score,
+            vector_score,
+            keyword_score,
+            start_line: row.start_line,
+            end_line: row.end_line,
+            language: row.language,
+            project: row.project,
+            page_numbers: row.page_numbers,
+            heading_context: row.heading_context,
+        }
+    }
+
+    async fn fetch_rows_by_chunk_ids(
+        &self,
+        table: &Table,
+        chunk_ids: &[String],
+        project: Option<&str>,
+        root_path: Option<&str>,
+    ) -> Result<HashMap<String, StoredSearchRow>> {
+        if chunk_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let Some(filter) = Self::build_sql_filter(project, root_path, Some(chunk_ids)) else {
+            return Ok(HashMap::new());
+        };
+
+        let stream = table
+            .query()
+            .only_if(filter)
+            .select(Select::Columns(vec![
+                "id".to_string(),
+                "file_path".to_string(),
+                "root_path".to_string(),
+                "start_line".to_string(),
+                "end_line".to_string(),
+                "language".to_string(),
+                "content".to_string(),
+                "project".to_string(),
+                "page_numbers".to_string(),
+                "heading_context".to_string(),
+            ]))
+            .execute()
+            .await
+            .context("Failed to fetch rows by chunk id")?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .context("Failed to collect rows by chunk id")?;
+
+        let mut rows = HashMap::new();
+        for batch in batches {
+            for idx in 0..batch.num_rows() {
+                if let Some(row) = Self::row_from_batch(&batch, idx) {
+                    rows.insert(row.chunk_id.clone(), row);
+                }
+            }
+        }
+
+        Ok(rows)
+    }
+
+    fn normalized_query_terms(query_text: &str) -> Vec<String> {
+        query_text
+            .split(|c: char| !c.is_alphanumeric())
+            .map(str::trim)
+            .filter(|term| term.len() >= 2)
+            .map(|term| term.to_lowercase())
+            .collect()
+    }
+
+    fn keyword_match_confidence(query_text: &str, content: &str) -> Option<f32> {
+        let trimmed_query = query_text.trim();
+        if trimmed_query.len() < 2 {
+            return None;
+        }
+
+        let lowercase_content = content.to_lowercase();
+        let lowercase_query = trimmed_query.to_lowercase();
+
+        if lowercase_content.contains(&lowercase_query) {
+            return Some(0.92);
+        }
+
+        let terms = Self::normalized_query_terms(trimmed_query);
+        if !terms.is_empty() && terms.iter().all(|term| lowercase_content.contains(term)) {
+            return Some(if terms.len() == 1 { 0.85 } else { 0.78 });
+        }
+
+        None
+    }
+
+    fn display_score(
+        query_text: &str,
+        content: &str,
+        vector_score: f32,
+        keyword_score: Option<f32>,
+    ) -> f32 {
+        let keyword_confidence = keyword_score
+            .and_then(|_| Self::keyword_match_confidence(query_text, content))
+            .unwrap_or(0.0);
+
+        vector_score.max(keyword_confidence)
     }
 
     /// Get or create a BM25 index for a specific root path
@@ -153,13 +448,28 @@ impl LanceVectorDB {
         ]))
     }
 
-    /// Get or create table
+    /// Get or create table. If the table doesn't exist, creates it with a default dimension of 768.
     async fn get_table(&self) -> Result<Table> {
-        self.connection
-            .open_table(&self.table_name)
-            .execute()
-            .await
-            .context("Failed to open table")
+        match self.connection.open_table(&self.table_name).execute().await {
+            Ok(table) => Ok(table),
+            Err(_) => {
+                // Table doesn't exist yet — create it with default dimension
+                let schema = Self::create_schema(768);
+                let empty_batch = RecordBatch::new_empty(schema.clone());
+                let batches =
+                    RecordBatchIterator::new(vec![empty_batch].into_iter().map(Ok), schema.clone());
+                self.connection
+                    .create_table(&self.table_name, Box::new(batches))
+                    .execute()
+                    .await
+                    .context("Failed to create table")?;
+                self.connection
+                    .open_table(&self.table_name)
+                    .execute()
+                    .await
+                    .context("Failed to open table after creation")
+            }
+        }
     }
 
     /// Convert embeddings and metadata to RecordBatch
@@ -169,7 +479,6 @@ impl LanceVectorDB {
         contents: Vec<String>,
         schema: Arc<Schema>,
     ) -> Result<RecordBatch> {
-        let num_rows = embeddings.len();
         let dimension = embeddings[0].len();
 
         // Create FixedSizeListArray for vectors
@@ -182,8 +491,9 @@ impl LanceVectorDB {
 
         // Create arrays for each field
         let id_array = StringArray::from(
-            (0..num_rows)
-                .map(|i| format!("{}:{}", metadata[i].file_path, metadata[i].start_line))
+            metadata
+                .iter()
+                .map(|m| m.chunk_id.as_deref().unwrap_or(""))
                 .collect::<Vec<_>>(),
         );
         let file_path_array = StringArray::from(
@@ -337,10 +647,10 @@ impl VectorDatabase for LanceVectorDB {
 
         let dimension = embeddings[0].len();
         let schema = Self::create_schema(dimension);
+        let mut metadata = metadata;
+        Self::ensure_chunk_ids(&mut metadata, &contents);
 
-        // Get current row count to use as starting ID for BM25
         let table = self.get_table().await?;
-        let current_count = table.count_rows(None).await.unwrap_or(0) as u64;
 
         let batch = Self::create_record_batch(
             embeddings,
@@ -364,8 +674,15 @@ impl VectorDatabase for LanceVectorDB {
         // Add documents to per-project BM25 index with file_path for deletion tracking
         let bm25_docs: Vec<_> = (0..count)
             .map(|i| {
-                let id = current_count + i as u64;
-                (id, contents[i].clone(), metadata[i].file_path.clone())
+                (
+                    metadata[i]
+                        .chunk_id
+                        .clone()
+                        .expect("chunk ids assigned before BM25 indexing"),
+                    contents[i].clone(),
+                    metadata[i].file_path.clone(),
+                    metadata[i].project.clone(),
+                )
             })
             .collect();
 
@@ -400,21 +717,18 @@ impl VectorDatabase for LanceVectorDB {
         hybrid: bool,
     ) -> Result<Vec<SearchResult>> {
         let table = self.get_table().await?;
+        let vector_filter = Self::build_sql_filter(project.as_deref(), root_path.as_deref(), None);
 
         if hybrid {
-            // Hybrid search: combine vector and BM25 results with RRF
-            // Get more results from each source for RRF to combine
             let search_limit = limit * 3;
-
-            // Vector search
             let query = table
                 .vector_search(query_vector)
                 .context("Failed to create vector search")?
                 .limit(search_limit);
 
-            let stream = if let Some(ref project_name) = project {
+            let stream = if let Some(ref filter) = vector_filter {
                 query
-                    .only_if(format!("project = '{}'", project_name))
+                    .only_if(filter.clone())
                     .execute()
                     .await
                     .context("Failed to execute search")?
@@ -427,12 +741,9 @@ impl VectorDatabase for LanceVectorDB {
                 .await
                 .context("Failed to collect search results")?;
 
-            // Build vector results with row-based IDs
             let mut vector_results = Vec::new();
-            let mut row_offset = 0u64;
-
-            // Store original scores for later reporting
-            let mut original_scores: HashMap<u64, (f32, Option<f32>)> = HashMap::new();
+            let mut original_scores: HashMap<String, (f32, Option<f32>)> = HashMap::new();
+            let mut rows_by_chunk_id = HashMap::new();
 
             for batch in &results {
                 let distance_array = batch
@@ -441,174 +752,116 @@ impl VectorDatabase for LanceVectorDB {
                     .as_any()
                     .downcast_ref::<Float32Array>()
                     .context("Invalid _distance type")?;
+                let chunk_id_array = batch
+                    .column_by_name("id")
+                    .context("Missing id column")?
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .context("Invalid id type")?;
 
                 for i in 0..batch.num_rows() {
+                    let chunk_id = chunk_id_array.value(i).to_string();
                     let distance = distance_array.value(i);
                     let score = 1.0 / (1.0 + distance);
-                    let id = row_offset + i as u64;
+                    vector_results.push((chunk_id.clone(), score));
+                    original_scores.insert(chunk_id.clone(), (score, None));
 
-                    // For hybrid search, don't filter by min_score before RRF
-                    // RRF will combine weak vector + strong keyword (or vice versa)
-                    // Filtering happens after RRF based on the combined ranking
-                    vector_results.push((id, score));
-                    original_scores.insert(id, (score, None));
-                }
-                row_offset += batch.num_rows() as u64;
-            }
-
-            // BM25 keyword search across all per-project indexes
-            let bm25_indexes = self
-                .bm25_indexes
-                .read()
-                .map_err(|e| anyhow::anyhow!("Failed to acquire BM25 read lock: {}", e))?;
-
-            let mut all_bm25_results = Vec::new();
-            for (root_hash, bm25) in bm25_indexes.iter() {
-                tracing::debug!("Searching BM25 index for root hash: {}", root_hash);
-                let results = bm25
-                    .search(query_text, search_limit)
-                    .context("Failed to search BM25 index")?;
-
-                // Store BM25 scores (don't filter - let RRF combine them)
-                // BM25 scores are not normalized to 0-1 range, so min_score doesn't apply
-                for result in &results {
-                    original_scores
-                        .entry(result.id)
-                        .and_modify(|e| e.1 = Some(result.score))
-                        .or_insert((0.0, Some(result.score))); // No vector score, only keyword
-                }
-
-                all_bm25_results.extend(results);
-            }
-            drop(bm25_indexes);
-
-            let bm25_results = all_bm25_results;
-
-            // Combine results with Reciprocal Rank Fusion
-            // RRF produces scores ~0.01-0.03, so don't apply min_score to combined scores
-            let combined =
-                crate::bm25_search::reciprocal_rank_fusion(vector_results, bm25_results, limit);
-
-            // Build final results by looking up the combined IDs in the vector results
-            let mut search_results = Vec::new();
-
-            for (id, combined_score) in combined {
-                // Find this result in the original batch results
-                let mut found = false;
-                let mut batch_offset = 0u64;
-
-                for batch in &results {
-                    if id >= batch_offset && id < batch_offset + batch.num_rows() as u64 {
-                        let idx = (id - batch_offset) as usize;
-
-                        let file_path_array = batch
-                            .column_by_name("file_path")
-                            .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-                        let root_path_array = batch
-                            .column_by_name("root_path")
-                            .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-                        let start_line_array = batch
-                            .column_by_name("start_line")
-                            .and_then(|c| c.as_any().downcast_ref::<UInt32Array>());
-                        let end_line_array = batch
-                            .column_by_name("end_line")
-                            .and_then(|c| c.as_any().downcast_ref::<UInt32Array>());
-                        let language_array = batch
-                            .column_by_name("language")
-                            .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-                        let content_array = batch
-                            .column_by_name("content")
-                            .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-                        let project_array = batch
-                            .column_by_name("project")
-                            .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-
-                        if let (
-                            Some(fp),
-                            Some(rp),
-                            Some(sl),
-                            Some(el),
-                            Some(lang),
-                            Some(cont),
-                            Some(proj),
-                        ) = (
-                            file_path_array,
-                            root_path_array,
-                            start_line_array,
-                            end_line_array,
-                            language_array,
-                            content_array,
-                            project_array,
-                        ) {
-                            // Look up original scores for filtering and reporting
-                            let (vector_score, keyword_score) =
-                                original_scores.get(&id).copied().unwrap_or((0.0, None));
-
-                            // For hybrid search, apply min_score intelligently:
-                            // Accept if EITHER vector or keyword score meets threshold
-                            // This allows pure keyword matches (weak vector) and pure semantic matches (weak keyword)
-                            let passes_filter = vector_score >= min_score
-                                || keyword_score.is_some_and(|k| k >= min_score);
-
-                            if passes_filter {
-                                let result_root_path = if rp.is_null(idx) {
-                                    None
-                                } else {
-                                    Some(rp.value(idx).to_string())
-                                };
-
-                                // Filter by root_path if specified
-                                if let Some(ref filter_path) = root_path {
-                                    if result_root_path.as_ref() != Some(filter_path) {
-                                        found = true;
-                                        break;
-                                    }
-                                }
-
-                                // Use RRF combined score as the main score for ranking
-                                // But report original vector/keyword scores for transparency
-                                search_results.push(SearchResult {
-                                    score: combined_score, // RRF score for ranking
-                                    vector_score,          // Original vector score
-                                    keyword_score,         // Original BM25 score
-                                    file_path: fp.value(idx).to_string(),
-                                    root_path: result_root_path,
-                                    start_line: sl.value(idx) as usize,
-                                    end_line: el.value(idx) as usize,
-                                    language: lang.value(idx).to_string(),
-                                    content: cont.value(idx).to_string(),
-                                    project: if proj.is_null(idx) {
-                                        None
-                                    } else {
-                                        Some(proj.value(idx).to_string())
-                                    },
-                                    page_numbers: None,
-                                    heading_context: None,
-                                });
-                            }
-                            found = true;
-                            break;
-                        }
+                    if let Some(row) = Self::row_from_batch(batch, i) {
+                        rows_by_chunk_id.entry(chunk_id).or_insert(row);
                     }
-                    batch_offset += batch.num_rows() as u64;
+                }
+            }
+
+            if let Some(root_path) = root_path.as_deref() {
+                self.get_or_create_bm25(root_path)?;
+            }
+
+            let all_bm25_results = {
+                let bm25_indexes = self
+                    .bm25_indexes
+                    .read()
+                    .map_err(|e| anyhow::anyhow!("Failed to acquire BM25 read lock: {}", e))?;
+                let target_hash = root_path.as_deref().map(Self::hash_root_path);
+
+                let mut all_bm25_results = Vec::new();
+                for (root_hash, bm25) in bm25_indexes.iter() {
+                    if let Some(ref target_hash) = target_hash
+                        && root_hash != target_hash
+                    {
+                        continue;
+                    }
+
+                    tracing::debug!("Searching BM25 index for root hash: {}", root_hash);
+                    let results = bm25
+                        .search(query_text, search_limit, project.as_deref())
+                        .context("Failed to search BM25 index")?;
+
+                    for result in &results {
+                        original_scores
+                            .entry(result.id.clone())
+                            .and_modify(|entry| entry.1 = Some(result.score))
+                            .or_insert((0.0, Some(result.score)));
+                    }
+
+                    all_bm25_results.extend(results);
                 }
 
-                if !found {
-                    tracing::warn!("Could not find result for RRF ID {}", id);
+                all_bm25_results
+            };
+
+            let combined =
+                crate::bm25_search::reciprocal_rank_fusion(vector_results, all_bm25_results, limit);
+            let missing_chunk_ids: Vec<String> = combined
+                .iter()
+                .map(|(chunk_id, _)| chunk_id.clone())
+                .filter(|chunk_id| !rows_by_chunk_id.contains_key(chunk_id))
+                .collect();
+            let fetched_rows = self
+                .fetch_rows_by_chunk_ids(
+                    &table,
+                    &missing_chunk_ids,
+                    project.as_deref(),
+                    root_path.as_deref(),
+                )
+                .await?;
+            rows_by_chunk_id.extend(fetched_rows);
+
+            let mut search_results = Vec::new();
+            for (chunk_id, combined_score) in combined {
+                let Some(row) = rows_by_chunk_id.remove(&chunk_id) else {
+                    tracing::warn!("Could not find result for RRF chunk {}", chunk_id);
+                    continue;
+                };
+
+                let (vector_score, keyword_score) = original_scores
+                    .get(&chunk_id)
+                    .cloned()
+                    .unwrap_or((0.0, None));
+                let display_score =
+                    Self::display_score(query_text, &row.content, vector_score, keyword_score);
+                let passes_filter = display_score >= min_score;
+
+                if passes_filter {
+                    search_results.push(Self::row_to_search_result(
+                        row,
+                        display_score,
+                        Some(combined_score),
+                        vector_score,
+                        keyword_score,
+                    ));
                 }
             }
 
             Ok(search_results)
         } else {
-            // Pure vector search
             let query = table
                 .vector_search(query_vector)
                 .context("Failed to create vector search")?
                 .limit(limit);
 
-            let stream = if let Some(ref project_name) = project {
+            let stream = if let Some(ref filter) = vector_filter {
                 query
-                    .only_if(format!("project = '{}'", project_name))
+                    .only_if(filter.clone())
                     .execute()
                     .await
                     .context("Failed to execute search")?
@@ -622,57 +875,7 @@ impl VectorDatabase for LanceVectorDB {
                 .context("Failed to collect search results")?;
 
             let mut search_results = Vec::new();
-
             for batch in results {
-                let file_path_array = batch
-                    .column_by_name("file_path")
-                    .context("Missing file_path column")?
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .context("Invalid file_path type")?;
-
-                let root_path_array = batch
-                    .column_by_name("root_path")
-                    .context("Missing root_path column")?
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .context("Invalid root_path type")?;
-
-                let start_line_array = batch
-                    .column_by_name("start_line")
-                    .context("Missing start_line column")?
-                    .as_any()
-                    .downcast_ref::<UInt32Array>()
-                    .context("Invalid start_line type")?;
-
-                let end_line_array = batch
-                    .column_by_name("end_line")
-                    .context("Missing end_line column")?
-                    .as_any()
-                    .downcast_ref::<UInt32Array>()
-                    .context("Invalid end_line type")?;
-
-                let language_array = batch
-                    .column_by_name("language")
-                    .context("Missing language column")?
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .context("Invalid language type")?;
-
-                let content_array = batch
-                    .column_by_name("content")
-                    .context("Missing content column")?
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .context("Invalid content type")?;
-
-                let project_array = batch
-                    .column_by_name("project")
-                    .context("Missing project column")?
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .context("Invalid project type")?;
-
                 let distance_array = batch
                     .column_by_name("_distance")
                     .context("Missing _distance column")?
@@ -684,60 +887,16 @@ impl VectorDatabase for LanceVectorDB {
                     let distance = distance_array.value(i);
                     let score = 1.0 / (1.0 + distance);
 
-                    if score >= min_score {
-                        let result_root_path = if root_path_array.is_null(i) {
-                            None
-                        } else {
-                            Some(root_path_array.value(i).to_string())
-                        };
-
-                        // Filter by root_path if specified
-                        if let Some(ref filter_path) = root_path {
-                            if result_root_path.as_ref() != Some(filter_path) {
-                                continue;
-                            }
-                        }
-
-                        // Read optional page_numbers and heading_context
-                        let page_numbers = batch
-                            .column_by_name("page_numbers")
-                            .and_then(|c| c.as_any().downcast_ref::<StringArray>())
-                            .and_then(|arr| {
-                                if arr.is_null(i) {
-                                    None
-                                } else {
-                                    serde_json::from_str(arr.value(i)).ok()
-                                }
-                            });
-                        let heading_context = batch
-                            .column_by_name("heading_context")
-                            .and_then(|c| c.as_any().downcast_ref::<StringArray>())
-                            .and_then(|arr| {
-                                if arr.is_null(i) {
-                                    None
-                                } else {
-                                    Some(arr.value(i).to_string())
-                                }
-                            });
-
-                        search_results.push(SearchResult {
+                    if score >= min_score
+                        && let Some(row) = Self::row_from_batch(&batch, i)
+                    {
+                        search_results.push(Self::row_to_search_result(
+                            row,
                             score,
-                            vector_score: score,
-                            keyword_score: None,
-                            file_path: file_path_array.value(i).to_string(),
-                            root_path: result_root_path,
-                            start_line: start_line_array.value(i) as usize,
-                            end_line: end_line_array.value(i) as usize,
-                            language: language_array.value(i).to_string(),
-                            content: content_array.value(i).to_string(),
-                            project: if project_array.is_null(i) {
-                                None
-                            } else {
-                                Some(project_array.value(i).to_string())
-                            },
-                            page_numbers,
-                            heading_context,
-                        });
+                            None,
+                            score,
+                            None,
+                        ));
                     }
                 }
             }

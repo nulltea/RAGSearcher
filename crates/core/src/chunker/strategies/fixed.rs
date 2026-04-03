@@ -59,6 +59,7 @@ impl FixedChunker {
             }
 
             let metadata = ChunkMetadata {
+                chunk_id: None,
                 file_path: input.relative_path.clone(),
                 root_path: Some(input.root_path.clone()),
                 project: input.project.clone(),
@@ -114,6 +115,7 @@ impl FixedChunker {
             let end_line = end_idx;
 
             let metadata = ChunkMetadata {
+                chunk_id: None,
                 file_path: input.relative_path.clone(),
                 root_path: Some(input.root_path.clone()),
                 project: input.project.clone(),

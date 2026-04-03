@@ -13,7 +13,11 @@ export type PaperType =
   | "technical_report"
   | "book_chapter";
 
-export type PaperStatus = "processing" | "ready_for_review" | "active" | "archived";
+export type PaperStatus =
+  | "processing"
+  | "ready_for_review"
+  | "active"
+  | "archived";
 
 export type Confidence = "high" | "medium" | "low";
 
@@ -65,6 +69,7 @@ export interface PaperListParams {
 // ============================================================================
 
 export interface SearchResult {
+  chunk_id?: string | null;
   file_path: string;
   content: string;
   score: number;
@@ -75,6 +80,8 @@ export interface SearchResult {
   end_line: number;
   language: string | null;
   project: string | null;
+  page_numbers?: number[] | null;
+  heading_context?: string | null;
 }
 
 export interface SearchResponse {

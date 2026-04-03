@@ -13,6 +13,7 @@ pub struct BM25Search {
     id_field: Field,
     content_field: Field,
     file_path_field: Field,
+    project_field: Field,
     /// Path to the index directory (needed for lock cleanup)
     index_path: std::path::PathBuf,
     /// Mutex to ensure only one IndexWriter is created at a time
@@ -22,7 +23,7 @@ pub struct BM25Search {
 /// Search result from BM25
 #[derive(Debug, Clone)]
 pub struct BM25Result {
-    pub id: u64,
+    pub id: String,
     pub score: f32,
 }
 
@@ -31,11 +32,12 @@ impl BM25Search {
     pub fn new<P: AsRef<Path>>(index_path: P) -> Result<Self> {
         let index_path = index_path.as_ref().to_path_buf();
 
-        // Create schema with ID, content, and file_path fields
+        // Create schema with ID, content, file_path, and project fields
         let mut schema_builder = Schema::builder();
-        let id_field = schema_builder.add_u64_field("id", STORED | INDEXED);
+        let id_field = schema_builder.add_text_field("id", STRING | STORED);
         let content_field = schema_builder.add_text_field("content", TEXT);
         let file_path_field = schema_builder.add_text_field("file_path", STRING | STORED);
+        let project_field = schema_builder.add_text_field("project", STRING | STORED);
         let schema = schema_builder.build();
 
         // Create or open index
@@ -53,6 +55,7 @@ impl BM25Search {
             id_field,
             content_field,
             file_path_field,
+            project_field,
             index_path,
             writer_lock: Mutex::new(()),
         })
@@ -111,8 +114,11 @@ impl BM25Search {
     /// Add documents to the index
     ///
     /// Arguments:
-    /// * `documents` - Vec of (id, content, file_path) tuples
-    pub fn add_documents(&self, documents: Vec<(u64, String, String)>) -> Result<()> {
+    /// * `documents` - Vec of (chunk_id, content, file_path, project) tuples
+    pub fn add_documents(
+        &self,
+        documents: Vec<(String, String, String, Option<String>)>,
+    ) -> Result<()> {
         // Lock to ensure only one writer at a time (within this process)
         let _guard = self
             .writer_lock
@@ -161,11 +167,12 @@ impl BM25Search {
             }
         };
 
-        for (id, content, file_path) in documents {
+        for (id, content, file_path, project) in documents {
             let doc = doc!(
                 self.id_field => id,
                 self.content_field => content,
                 self.file_path_field => file_path,
+                self.project_field => project.unwrap_or_default(),
             );
             index_writer
                 .add_document(doc)
@@ -180,7 +187,12 @@ impl BM25Search {
     }
 
     /// Search the index with BM25 scoring
-    pub fn search(&self, query_text: &str, limit: usize) -> Result<Vec<BM25Result>> {
+    pub fn search(
+        &self,
+        query_text: &str,
+        limit: usize,
+        project: Option<&str>,
+    ) -> Result<Vec<BM25Result>> {
         let reader = self
             .index
             .reader_builder()
@@ -192,8 +204,18 @@ impl BM25Search {
 
         // Parse query using lenient mode to handle special characters like :: in code
         // (e.g., "Tool::new" would fail strict parsing since : is a field separator)
-        let query_parser = QueryParser::for_index(&self.index, vec![self.content_field]);
-        let (query, _errors) = query_parser.parse_query_lenient(query_text);
+        let query_parser =
+            QueryParser::for_index(&self.index, vec![self.content_field, self.project_field]);
+        let query_text = if let Some(project) = project {
+            format!(
+                "project:\"{}\" AND ({})",
+                project.replace('"', "\\\""),
+                query_text
+            )
+        } else {
+            query_text.to_string()
+        };
+        let (query, _errors) = query_parser.parse_query_lenient(&query_text);
 
         // Search with BM25
         let top_docs = searcher
@@ -207,9 +229,12 @@ impl BM25Search {
                 .context("Failed to retrieve document")?;
 
             if let Some(id_value) = retrieved_doc.get_first(self.id_field)
-                && let Some(id) = id_value.as_u64()
+                && let Some(id) = id_value.as_str()
             {
-                results.push(BM25Result { id, score });
+                results.push(BM25Result {
+                    id: id.to_string(),
+                    score,
+                });
             }
         }
 
@@ -217,7 +242,7 @@ impl BM25Search {
     }
 
     /// Delete all documents for a specific ID
-    pub fn delete_by_id(&self, id: u64) -> Result<()> {
+    pub fn delete_by_id(&self, id: &str) -> Result<()> {
         // Lock to ensure only one writer at a time
         let _guard = self
             .writer_lock
@@ -229,7 +254,7 @@ impl BM25Search {
             .writer(50_000_000)
             .context("Failed to create index writer")?;
 
-        let term = Term::from_field_u64(self.id_field, id);
+        let term = Term::from_field_text(self.id_field, id);
         index_writer.delete_term(term);
 
         index_writer.commit().context("Failed to commit deletion")?;
@@ -318,12 +343,13 @@ pub const RRF_K_CONSTANT: f32 = 60.0;
 /// This is a convenience wrapper around `reciprocal_rank_fusion_generic` for the common case
 /// of combining vector search results (u64 IDs) with BM25 results.
 pub fn reciprocal_rank_fusion(
-    vector_results: Vec<(u64, f32)>,
+    vector_results: Vec<(String, f32)>,
     bm25_results: Vec<BM25Result>,
     k: usize,
-) -> Vec<(u64, f32)> {
+) -> Vec<(String, f32)> {
     // Convert BM25 results to the same format as vector results
-    let bm25_tuples: Vec<(u64, f32)> = bm25_results.into_iter().map(|r| (r.id, r.score)).collect();
+    let bm25_tuples: Vec<(String, f32)> =
+        bm25_results.into_iter().map(|r| (r.id, r.score)).collect();
 
     // Use the generic implementation
     reciprocal_rank_fusion_generic([vector_results, bm25_tuples], k)

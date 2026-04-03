@@ -52,9 +52,17 @@ impl ContextAwareChunker {
             .with_trim(true);
 
         let splitter = MarkdownSplitter::new(config);
-        tracing::info!(min_tokens = self.min_tokens, max_tokens = self.max_tokens, overlap = self.overlap_tokens, "Splitting markdown");
+        tracing::info!(
+            min_tokens = self.min_tokens,
+            max_tokens = self.max_tokens,
+            overlap = self.overlap_tokens,
+            "Splitting markdown"
+        );
         let text_chunks: Vec<&str> = splitter.chunks(text).collect();
-        tracing::info!(chunk_count = text_chunks.len(), "Markdown splitting complete");
+        tracing::info!(
+            chunk_count = text_chunks.len(),
+            "Markdown splitting complete"
+        );
 
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -63,10 +71,11 @@ impl ContextAwareChunker {
 
         let chunks = text_chunks
             .into_iter()
-            .filter(|c| !c.trim().is_empty())
+            .filter(|c| c.trim().len() >= 50)
             .map(|c| CodeChunk {
                 content: c.to_string(),
                 metadata: ChunkMetadata {
+                    chunk_id: None,
                     file_path: meta.relative_path.clone(),
                     root_path: Some(meta.root_path.clone()),
                     project: meta.project.clone(),
@@ -77,13 +86,25 @@ impl ContextAwareChunker {
                     file_hash: meta.hash.clone(),
                     indexed_at: timestamp,
                     page_numbers: None,
-                    heading_context: None,
+                    heading_context: Self::extract_heading_context(c),
                     element_types: None,
                 },
             })
             .collect();
 
         Ok(chunks)
+    }
+
+    fn extract_heading_context(chunk: &str) -> Option<String> {
+        chunk.lines().find_map(|line| {
+            let trimmed = line.trim();
+            let heading = trimmed.strip_prefix('#')?.trim_start_matches('#').trim();
+            if heading.is_empty() {
+                None
+            } else {
+                Some(heading.to_string())
+            }
+        })
     }
 }
 

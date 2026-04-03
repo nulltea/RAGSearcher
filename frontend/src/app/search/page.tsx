@@ -9,10 +9,63 @@ import { AlertCircle, Clock, FileCode, Loader2, Search } from "lucide-react";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-function parseSearchPath(filePath: string): { kind: string; paperId: string } | null {
+function parseSearchPath(
+  filePath: string
+): { kind: string; paperId: string } | null {
   const match = /^(papers|patterns|algorithms)\/(.+)$/.exec(filePath);
   if (!match) return null;
   return { kind: match[1], paperId: match[2] };
+}
+
+function buildPreview(content: string, query: string): string {
+  const normalized = content.trim();
+  if (!normalized) return "";
+
+  const trimmedQuery = query.trim().toLowerCase();
+  if (!trimmedQuery) {
+    return normalized.length > 300
+      ? normalized.slice(0, 300).trimEnd() + "…"
+      : normalized;
+  }
+
+  const lowerContent = normalized.toLowerCase();
+  const matchIndex = lowerContent.indexOf(trimmedQuery);
+  if (matchIndex === -1) {
+    return normalized.length > 300
+      ? normalized.slice(0, 300).trimEnd() + "…"
+      : normalized;
+  }
+
+  const contextRadius = 160;
+  const start = Math.max(0, matchIndex - contextRadius);
+  const end = Math.min(
+    normalized.length,
+    matchIndex + trimmedQuery.length + contextRadius
+  );
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < normalized.length ? "…" : "";
+  return `${prefix}${normalized.slice(start, end).trim()}${suffix}`;
+}
+
+function formatLocation(result: SearchResult): string {
+  if (result.page_numbers?.length) {
+    const uniquePages = Array.from(new Set(result.page_numbers)).sort(
+      (a, b) => a - b
+    );
+    const first = uniquePages[0];
+    const last = uniquePages[uniquePages.length - 1];
+    return first === last ? `page ${first}` : `pages ${first}-${last}`;
+  }
+
+  if (result.heading_context) {
+    return `section ${result.heading_context}`;
+  }
+
+  if (result.start_line > 0 || result.end_line > 0) {
+    return `lines ${result.start_line}-${result.end_line}`;
+  }
+
+  return result.language === "PDF" ? "PDF chunk" : "chunk";
 }
 
 // ============================================================================
@@ -25,8 +78,8 @@ function ScoreBar({ score }: { score: number }) {
     pct >= 70
       ? "bg-green-500"
       : pct >= 45
-      ? "bg-yellow-500"
-      : "bg-muted-foreground/40";
+        ? "bg-yellow-500"
+        : "bg-muted-foreground/40";
 
   return (
     <div className="flex items-center gap-2">
@@ -48,20 +101,20 @@ function ScoreBar({ score }: { score: number }) {
 function ResultCard({
   result,
   paperTitle,
+  query,
 }: {
   result: SearchResult;
   paperTitle?: string;
+  query: string;
 }) {
-  const displayScore = result.combined_score ?? result.score;
-  const preview =
-    result.content.length > 300
-      ? result.content.slice(0, 300).trimEnd() + "…"
-      : result.content;
+  const displayScore = result.score;
+  const preview = buildPreview(result.content, query);
   const parsed = parseSearchPath(result.file_path);
   const title = paperTitle ?? parsed?.paperId ?? result.file_path;
+  const location = formatLocation(result);
   const subtitle = parsed
-    ? `${parsed.kind} • ${result.file_path} • lines ${result.start_line}-${result.end_line}`
-    : `${result.file_path} • lines ${result.start_line}-${result.end_line}`;
+    ? `${parsed.kind} • ${result.file_path} • ${location}`
+    : `${result.file_path} • ${location}`;
 
   return (
     <Card>
@@ -146,7 +199,9 @@ function SearchPageInner() {
     ).then((entries) => {
       if (cancelled) return;
       const updates = Object.fromEntries(
-        entries.filter((entry): entry is readonly [string, string] => Boolean(entry))
+        entries.filter((entry): entry is readonly [string, string] =>
+          Boolean(entry)
+        )
       );
       if (Object.keys(updates).length) {
         setTitleMap((prev) => ({ ...prev, ...updates }));
@@ -172,7 +227,7 @@ function SearchPageInner() {
           query: trimmed,
           paper_id: paperId,
           limit: 10,
-          min_score: 0.3,
+          min_score: 0.7,
           hybrid: true,
         });
         setResponse(result);
@@ -255,8 +310,12 @@ function SearchPageInner() {
         <div className="flex flex-col gap-3">
           {response!.results.map((result, i) => (
             <ResultCard
-              key={`${result.file_path}-${result.start_line}-${i}`}
+              key={
+                result.chunk_id ??
+                `${result.file_path}-${result.start_line}-${i}`
+              }
               result={result}
+              query={query}
               paperTitle={(() => {
                 const parsed = parseSearchPath(result.file_path);
                 return parsed ? titleMap[parsed.paperId] : undefined;

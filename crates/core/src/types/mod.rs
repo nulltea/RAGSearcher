@@ -38,6 +38,9 @@ fn default_min_score() -> f32 {
 /// A single search result
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResult {
+    /// Stable identifier for the matched chunk
+    #[serde(default)]
+    pub chunk_id: Option<String>,
     /// File path relative to the indexed root
     pub file_path: String,
     /// Absolute path to the indexed root directory
@@ -45,8 +48,11 @@ pub struct SearchResult {
     pub root_path: Option<String>,
     /// The content chunk
     pub content: String,
-    /// Combined similarity score (0.0 to 1.0)
+    /// User-facing relevance score used for filtering/display (0.0 to 1.0)
     pub score: f32,
+    /// Hybrid fusion score used for ranking/debugging
+    #[serde(default)]
+    pub combined_score: Option<f32>,
     /// Vector similarity score (0.0 to 1.0)
     pub vector_score: f32,
     /// Keyword match score (0.0 to 1.0) - only present in hybrid search
@@ -335,6 +341,9 @@ pub struct ExtractAlgorithmsResponse {
 /// Metadata stored with each chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {
+    /// Stable identifier for the chunk
+    #[serde(default)]
+    pub chunk_id: Option<String>,
     /// File path relative to indexed root
     pub file_path: String,
     /// Absolute path to the indexed root directory
@@ -476,10 +485,12 @@ mod tests {
     #[test]
     fn test_search_result_creation() {
         let result = SearchResult {
+            chunk_id: Some("chunk-1".to_string()),
             file_path: "test.md".to_string(),
             root_path: Some("papers".to_string()),
             content: "test content".to_string(),
             score: 0.95,
+            combined_score: Some(0.92),
             vector_score: 0.90,
             keyword_score: Some(0.85),
             start_line: 1,
@@ -495,6 +506,7 @@ mod tests {
     #[test]
     fn test_chunk_metadata_creation() {
         let meta = ChunkMetadata {
+            chunk_id: Some("chunk-1".to_string()),
             file_path: "test.md".to_string(),
             root_path: Some("papers".to_string()),
             project: Some("test-project".to_string()),

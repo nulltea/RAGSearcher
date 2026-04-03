@@ -241,6 +241,7 @@ impl VectorDatabase for QdrantVectorDB {
             .enumerate()
             .map(|(idx, ((embedding, meta), content))| {
                 let payload: Payload = json!({
+                    "chunk_id": meta.chunk_id,
                     "file_path": meta.file_path,
                     "project": meta.project,
                     "start_line": meta.start_line,
@@ -361,6 +362,9 @@ impl VectorDatabase for QdrantVectorDB {
             let result_root_path = payload
                 .get("root_path")
                 .and_then(|v| v.as_str().map(String::from));
+            let chunk_id = payload
+                .get("chunk_id")
+                .and_then(|v| v.as_str().map(String::from));
 
             if let Some(ref filter_path) = root_path {
                 if result_root_path.as_ref() != Some(filter_path) {
@@ -369,10 +373,12 @@ impl VectorDatabase for QdrantVectorDB {
             }
 
             results.push(SearchResult {
+                chunk_id,
                 file_path,
                 root_path: result_root_path,
                 content,
                 score: final_score,
+                combined_score: None,
                 vector_score,
                 keyword_score,
                 start_line,

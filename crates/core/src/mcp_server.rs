@@ -1,6 +1,6 @@
 use crate::chunker::{ChunkInput, PdfChunkMeta, extract_pdf};
 use crate::client::RagClient;
-use crate::embedding::EmbeddingProvider;
+use crate::embedding::{EmbeddingProvider, format_retrieval_document};
 use crate::extraction::AlgorithmExtractor;
 use crate::metadata::MetadataStore;
 use crate::metadata::models::{
@@ -409,7 +409,10 @@ impl RagMcpServer {
                 .map_err(|e| format!("{:#}", e))?;
             0
         } else {
-            let texts: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
+            let texts: Vec<String> = chunks
+                .iter()
+                .map(|c| format_retrieval_document(Some(&title), &c.content))
+                .collect();
             let metadata: Vec<ChunkMetadata> = chunks.iter().map(|c| c.metadata.clone()).collect();
             let contents: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
 
@@ -569,6 +572,7 @@ impl RagMcpServer {
             let metadata: Vec<ChunkMetadata> = approved
                 .iter()
                 .map(|a| ChunkMetadata {
+                    chunk_id: None,
                     file_path: format!("algorithms/{}", a.paper_id),
                     root_path: Some("algorithms".to_string()),
                     start_line: 0,

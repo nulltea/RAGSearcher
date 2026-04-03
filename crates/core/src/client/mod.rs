@@ -5,7 +5,7 @@
 
 use crate::chunker::{ContextAwareChunker, FixedChunker};
 use crate::config::Config;
-use crate::embedding::{EmbeddingProvider, MistralRsEmbedder};
+use crate::embedding::{EmbeddingProvider, MistralRsEmbedder, format_retrieval_query};
 use crate::types::*;
 use crate::vector_db::VectorDatabase;
 
@@ -144,13 +144,15 @@ impl RagClient {
 
         let start = Instant::now();
 
-        let query_embedding = self
-            .embedding_provider
-            .embed_batch(vec![request.query.clone()])
-            .context("Failed to generate query embedding")?
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("No embedding generated"))?;
+        let provider = self.embedding_provider.clone();
+        let query_text = format_retrieval_query(&request.query);
+        let query_embedding =
+            tokio::task::spawn_blocking(move || provider.embed_batch(vec![query_text]))
+                .await?
+                .context("Failed to generate query embedding")?
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("No embedding generated"))?;
 
         let original_threshold = request.min_score;
         let mut threshold_used = original_threshold;

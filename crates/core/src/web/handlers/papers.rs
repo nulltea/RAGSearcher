@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
 use crate::chunker::{ChunkInput, PdfChunkMeta, extract_pdf};
-use crate::embedding::EmbeddingProvider;
+use crate::embedding::{EmbeddingProvider, format_retrieval_document};
 use crate::metadata::models::{PaperCreate, PaperListParams, PaperStatus};
 use crate::types::ChunkMetadata;
 use crate::vector_db::VectorDatabase;
@@ -281,7 +281,10 @@ pub async fn upload_paper(
     }
 
     // Generate embeddings
-    let texts: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
+    let texts: Vec<String> = chunks
+        .iter()
+        .map(|c| format_retrieval_document(Some(&title), &c.content))
+        .collect();
     let metadata: Vec<ChunkMetadata> = chunks.iter().map(|c| c.metadata.clone()).collect();
     let contents: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
 
