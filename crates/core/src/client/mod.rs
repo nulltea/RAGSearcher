@@ -3,9 +3,10 @@
 //! This module provides the main client interface for using project-rag
 //! as a library for paper embedding and semantic search.
 
-use crate::chunker::{ContextAwareChunker, FixedChunker};
+use crate::chunker::HybridChunker;
 use crate::config::Config;
 use crate::embedding::{EmbeddingProvider, MistralRsEmbedder, format_retrieval_query};
+use crate::retrieval::HybridSearchEngine;
 use crate::types::*;
 use crate::vector_db::VectorDatabase;
 
@@ -57,12 +58,10 @@ struct QueryProfile {
 #[derive(Clone)]
 pub struct RagClient {
     pub(crate) embedding_provider: Arc<MistralRsEmbedder>,
-    #[cfg(feature = "qdrant-backend")]
-    pub(crate) vector_db: Arc<QdrantVectorDB>,
-    #[cfg(not(feature = "qdrant-backend"))]
-    pub(crate) vector_db: Arc<LanceVectorDB>,
-    pub(crate) chunker: Arc<FixedChunker>,
-    pub(crate) pdf_chunker: Arc<ContextAwareChunker>,
+    pub(crate) vector_db: Arc<dyn VectorDatabase>,
+    pub(crate) retrieval: Arc<HybridSearchEngine>,
+    pub(crate) chunker: Arc<HybridChunker>,
+    pub(crate) pdf_chunker: Arc<HybridChunker>,
     pub(crate) config: Arc<Config>,
 }
 
@@ -73,14 +72,7 @@ impl RagClient {
     }
 
     /// Get the vector database
-    #[cfg(feature = "qdrant-backend")]
-    pub fn vector_db(&self) -> &Arc<QdrantVectorDB> {
-        &self.vector_db
-    }
-
-    /// Get the vector database
-    #[cfg(not(feature = "qdrant-backend"))]
-    pub fn vector_db(&self) -> &Arc<LanceVectorDB> {
+    pub fn vector_db(&self) -> &Arc<dyn VectorDatabase> {
         &self.vector_db
     }
 
@@ -115,7 +107,7 @@ impl RagClient {
                 QdrantVectorDB::with_url(&config.vector_db.qdrant_url)
                     .await
                     .context("Failed to initialize Qdrant vector database")?,
-            )
+            ) as Arc<dyn VectorDatabase>
         };
 
         #[cfg(not(feature = "qdrant-backend"))]
@@ -128,7 +120,7 @@ impl RagClient {
                 LanceVectorDB::with_path(&config.vector_db.lancedb_path.to_string_lossy())
                     .await
                     .context("Failed to initialize LanceDB vector database")?,
-            )
+            ) as Arc<dyn VectorDatabase>
         };
 
         // Initialize the database with the embedding dimension
@@ -138,12 +130,14 @@ impl RagClient {
             .context("Failed to initialize vector database collections")?;
 
         // Create chunkers
-        let chunker = Arc::new(FixedChunker::default_strategy());
-        let pdf_chunker = Arc::new(ContextAwareChunker::new());
+        let chunker = Arc::new(HybridChunker::new());
+        let pdf_chunker = chunker.clone();
+        let retrieval = Arc::new(HybridSearchEngine::new(vector_db.clone()));
 
         Ok(Self {
             embedding_provider,
             vector_db,
+            retrieval,
             chunker,
             pdf_chunker,
             config: Arc::new(config),
@@ -431,16 +425,11 @@ impl RagClient {
             .clamp(MIN_CANDIDATE_LIMIT, MAX_CANDIDATE_LIMIT);
 
         let raw_results = self
-            .vector_db
-            .search(
-                query_embedding.clone(),
-                &request.query,
-                candidate_limit,
-                0.0,
-                request.project.clone(),
-                request.path.clone(),
-                request.hybrid,
-            )
+            .retrieval
+            .search(query_embedding.clone(), &QueryRequest {
+                limit: candidate_limit,
+                ..request.clone()
+            })
             .await
             .context("Failed to search")?;
         let mut results: Vec<SearchResult> = raw_results

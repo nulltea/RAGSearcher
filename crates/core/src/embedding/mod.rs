@@ -41,3 +41,32 @@ pub fn format_retrieval_document(title: Option<&str>, text: &str) -> String {
 
     format!("title: {} | text: {}", title, text.trim())
 }
+
+/// Format a retrieval document with chunk-level structure context.
+pub fn format_retrieval_chunk(
+    title: Option<&str>,
+    heading_context: Option<&str>,
+    element_types: Option<&[String]>,
+    text: &str,
+) -> String {
+    let title = title
+        .map(sanitize_prompt_field)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "none".to_string());
+    let heading = heading_context
+        .map(sanitize_prompt_field)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "none".to_string());
+    let element_types = element_types
+        .filter(|values| !values.is_empty())
+        .map(|values| values.join(","))
+        .unwrap_or_else(|| "none".to_string());
+
+    format!(
+        "title: {} | heading: {} | types: {} | text: {}",
+        title,
+        heading,
+        element_types,
+        text.trim()
+    )
+}

@@ -3,7 +3,6 @@ use axum::extract::State;
 use std::sync::Arc;
 
 use crate::types::QueryRequest;
-use crate::vector_db::VectorDatabase;
 use crate::web::AppState;
 use crate::web::errors::ApiError;
 use crate::web::models::{SearchRequest, SearchResponse, StatisticsResponse};

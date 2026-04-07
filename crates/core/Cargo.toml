@@ -25,6 +25,7 @@ exclude = [
 rmcp = { version = "0.8", features = ["server", "transport-io", "macros"] }
 schemars = "1.0"
 tokio = { version = "1.43", features = ["full"] }
+graphrag-core = { git = "https://github.com/automataIA/graphrag-rs.git", rev = "c46e2872fe7adc40e736981f1bf01dc71d829401", default-features = false, features = ["async", "basic-retrieval", "hybrid-retrieval", "parallel-processing", "lancedb"] }
 # Vector databases - LanceDB is default (embedded, stable), Qdrant is optional (external)
 lancedb = "0.23"
 arrow-array = "56.2"
@@ -60,6 +61,7 @@ rusqlite = { version = "0.34", features = ["bundled"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 text-splitter = { version = "0.29.3", features = ["tokenizers", "markdown"] }
 tokenizers = { version = "0.22.2", features = ["http"] }
+regex = "1.11"
 
 [dev-dependencies]
 tempfile = "3.0"

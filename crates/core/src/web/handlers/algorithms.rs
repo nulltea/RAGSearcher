@@ -9,7 +9,6 @@ use serde::Deserialize;
 use crate::embedding::{EmbeddingProvider, format_retrieval_document};
 use crate::metadata::models::{AlgorithmIORow, AlgorithmStepRow, PatternStatus};
 use crate::types::ChunkMetadata;
-use crate::vector_db::VectorDatabase;
 use crate::web::AppState;
 use crate::web::errors::ApiError;
 use crate::web::models::{

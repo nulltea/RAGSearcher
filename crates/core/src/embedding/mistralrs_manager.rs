@@ -34,9 +34,9 @@ impl MistralRsEmbedder {
 
 impl MistralRsEmbedder {
     /// Assign a text to the smallest bucket that fits its approximate token count.
-    /// Uses char_count / 4 as a rough token estimate (avoids tokenizer overhead).
     fn bucket_index(text: &str) -> usize {
-        let approx_tokens = text.len() / 4;
+        let approx_tokens = crate::tokenization::count_embedding_tokens(text)
+            .unwrap_or_else(|_| text.len() / 4);
         TOKEN_BUCKETS
             .iter()
             .position(|&b| approx_tokens <= b)

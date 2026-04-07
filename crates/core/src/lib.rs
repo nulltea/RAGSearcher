@@ -39,11 +39,20 @@ pub mod error;
 /// Paper text chunking and PDF extraction
 pub mod chunker;
 
+/// Document normalization and structural modeling
+pub mod document;
+
 /// Path normalization and utility functions
 pub mod paths;
 
+/// Shared tokenizer helpers
+pub mod tokenization;
+
 /// Request/response types with validation
 pub mod types;
+
+/// Retrieval orchestration built on top of the vector and sparse backends
+pub mod retrieval;
 
 /// Vector database abstraction supporting LanceDB and Qdrant
 pub mod vector_db;

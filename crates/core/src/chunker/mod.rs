@@ -7,7 +7,7 @@ mod pdf_extractor;
 mod strategies;
 
 pub use pdf_extractor::{PdfExtraction, extract_pdf, extract_pdf_to_markdown};
-pub use strategies::{ChunkStrategy, ContextAwareChunker, FixedChunker, PdfChunkMeta};
+pub use strategies::{ChunkStrategy, ContextAwareChunker, FixedChunker, HybridChunker, PdfChunkMeta};
 
 use crate::types::ChunkMetadata;
 

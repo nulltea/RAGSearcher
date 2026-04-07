@@ -8,7 +8,6 @@ use project_rag::metadata::MetadataStore;
 use project_rag::metadata::models::{PaperStatus, Pattern, PatternStatus};
 use project_rag::paths::PlatformPaths;
 use project_rag::types::ChunkMetadata;
-use project_rag::vector_db::VectorDatabase;
 use std::panic;
 use std::sync::Arc;
 use std::time::Instant;
