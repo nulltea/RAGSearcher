@@ -22,7 +22,7 @@ pub async fn search(
 
     let response = state
         .client
-        .query_codebase(query_req)
+        .query(query_req)
         .await
         .map_err(|e| ApiError::Internal(format!("Search failed: {:#}", e)))?;
 

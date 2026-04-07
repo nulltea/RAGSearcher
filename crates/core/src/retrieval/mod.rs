@@ -1,22 +1,45 @@
 use crate::types::{QueryRequest, SearchResult};
 use crate::vector_db::VectorDatabase;
 use anyhow::Result;
-use graphrag_core::retrieval::{FusionMethod, HybridConfig};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const STOP_WORDS: &[&str] = &[
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into", "is", "of",
     "on", "or", "that", "the", "to", "with", "within",
 ];
 
-/// Phase 1 retrieval wrapper. The dense/sparse execution still delegates to the current
-/// backend, but the orchestration surface is aligned with graphrag-core and keeps an
-/// internal KnowledgeGraph ready for Phase 2 augmentation.
+#[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
+pub enum FusionMethod {
+    RRF,
+    Weighted,
+    CombSum,
+    MaxScore,
+}
+
+#[derive(Debug, Clone)]
+pub struct HybridConfig {
+    pub fusion_method: FusionMethod,
+    pub max_candidates: usize,
+    pub heading_match_boost: f32,
+    pub figure_table_boost: f32,
+}
+
+impl Default for HybridConfig {
+    fn default() -> Self {
+        Self {
+            fusion_method: FusionMethod::RRF,
+            max_candidates: 100,
+            heading_match_boost: 0.03,
+            figure_table_boost: 0.04,
+        }
+    }
+}
+
+/// Local retrieval wrapper over the repo's dense+sparse backend path.
 pub struct HybridSearchEngine {
     vector_db: Arc<dyn VectorDatabase>,
     config: HybridConfig,
-    #[allow(dead_code)]
-    graph: Arc<RwLock<graphrag_core::KnowledgeGraph>>,
 }
 
 impl HybridSearchEngine {
@@ -24,7 +47,6 @@ impl HybridSearchEngine {
         Self {
             vector_db,
             config: HybridConfig::default(),
-            graph: Arc::new(RwLock::new(graphrag_core::KnowledgeGraph::new())),
         }
     }
 
@@ -36,7 +58,11 @@ impl HybridSearchEngine {
         self.config.fusion_method.clone()
     }
 
-    pub async fn search(&self, query_vector: Vec<f32>, request: &QueryRequest) -> Result<Vec<SearchResult>> {
+    pub async fn search(
+        &self,
+        query_vector: Vec<f32>,
+        request: &QueryRequest,
+    ) -> Result<Vec<SearchResult>> {
         let mut results = self
             .vector_db
             .search(
@@ -70,7 +96,7 @@ impl HybridSearchEngine {
                     .filter(|term| heading_terms.iter().any(|heading| heading == *term))
                     .count();
                 if overlap > 0 {
-                    boost += 0.03 * overlap as f32;
+                    boost += self.config.heading_match_boost * overlap as f32;
                 }
             }
 
@@ -82,7 +108,7 @@ impl HybridSearchEngine {
                     .next()
                     .is_some_and(|line| line.to_lowercase().contains("table"))
             {
-                boost += 0.04;
+                boost += self.config.figure_table_boost;
             }
 
             if query_lower.contains("figure")
@@ -92,7 +118,7 @@ impl HybridSearchEngine {
                     .next()
                     .is_some_and(|line| line.to_lowercase().contains("figure"))
             {
-                boost += 0.04;
+                boost += self.config.figure_table_boost;
             }
 
             if boost > 0.0 {

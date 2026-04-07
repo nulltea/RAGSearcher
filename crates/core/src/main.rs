@@ -187,9 +187,9 @@ fn show_version_info() {
     println!();
 
     println!("Embedding Model:");
-    println!("  Model:           all-MiniLM-L6-v2");
-    println!("  Dimensions:      384");
-    println!("  Provider:        FastEmbed (local, no API calls)");
+    println!("  Model:           google/embeddinggemma-300m");
+    println!("  Dimensions:      768");
+    println!("  Provider:        MistralRS (local, no API calls)");
     println!();
 
     println!("Configuration:");

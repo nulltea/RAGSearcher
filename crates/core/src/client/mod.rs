@@ -404,7 +404,7 @@ impl RagClient {
     }
 
     /// Query the indexed content using semantic search
-    pub async fn query_codebase(&self, request: QueryRequest) -> Result<QueryResponse> {
+    pub async fn query(&self, request: QueryRequest) -> Result<QueryResponse> {
         request.validate().map_err(|e| anyhow::anyhow!(e))?;
 
         let start = Instant::now();

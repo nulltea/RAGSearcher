@@ -25,7 +25,6 @@ exclude = [
 rmcp = { version = "0.8", features = ["server", "transport-io", "macros"] }
 schemars = "1.0"
 tokio = { version = "1.43", features = ["full"] }
-graphrag-core = { git = "https://github.com/automataIA/graphrag-rs.git", rev = "c46e2872fe7adc40e736981f1bf01dc71d829401", default-features = false, features = ["async", "basic-retrieval", "hybrid-retrieval", "parallel-processing", "lancedb"] }
 # Vector databases - LanceDB is default (embedded, stable), Qdrant is optional (external)
 lancedb = "0.23"
 arrow-array = "56.2"

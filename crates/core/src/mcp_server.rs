@@ -105,7 +105,7 @@ impl RagMcpServer {
 
         let response = self
             .client
-            .query_codebase(req)
+            .query(req)
             .await
             .map_err(|e| format!("{:#}", e))?;
 

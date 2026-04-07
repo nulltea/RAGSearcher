@@ -17,7 +17,7 @@
 //!
 //! ## Key Features
 //!
-//! - **Semantic Search**: FastEmbed (all-MiniLM-L6-v2) for local embeddings
+//! - **Semantic Search**: Local EmbeddingGemma embeddings with BM25 hybrid search
 //! - **Hybrid Search**: Combines vector similarity with BM25 keyword matching (RRF)
 //! - **Dual Database Support**: LanceDB (embedded, default) or Qdrant (external server)
 //! - **Paper Management**: Upload, extract, and search papers with metadata
@@ -30,7 +30,7 @@ pub mod bm25_search;
 /// Configuration management with environment variable overrides
 pub mod config;
 
-/// Embedding generation using FastEmbed (all-MiniLM-L6-v2)
+/// Embedding generation using local embedding models
 pub mod embedding;
 
 /// Error types and utilities
