@@ -29,7 +29,16 @@ function buildPreview(content: string, query: string): string {
   }
 
   const lowerContent = normalized.toLowerCase();
-  const matchIndex = lowerContent.indexOf(trimmedQuery);
+  const significantTerms = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2);
+  const snippetTargets = [trimmedQuery, ...significantTerms];
+  const matchIndex =
+    snippetTargets
+      .map((target) => lowerContent.indexOf(target))
+      .find((index) => index >= 0) ?? -1;
   if (matchIndex === -1) {
     return normalized.length > 300
       ? normalized.slice(0, 300).trimEnd() + "…"
@@ -112,6 +121,9 @@ function ResultCard({
   const parsed = parseSearchPath(result.file_path);
   const title = paperTitle ?? parsed?.paperId ?? result.file_path;
   const location = formatLocation(result);
+  const matchType = result.match_type
+    ? result.match_type[0].toUpperCase() + result.match_type.slice(1)
+    : null;
   const subtitle = parsed
     ? `${parsed.kind} • ${result.file_path} • ${location}`
     : `${result.file_path} • ${location}`;
@@ -130,11 +142,18 @@ function ResultCard({
               <span className="truncate font-mono text-xs">{subtitle}</span>
             </div>
           </div>
-          {result.language && (
-            <Badge variant="secondary" className="shrink-0 text-xs">
-              {result.language}
-            </Badge>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {matchType && (
+              <Badge variant="outline" className="text-xs">
+                {matchType}
+              </Badge>
+            )}
+            {result.language && (
+              <Badge variant="secondary" className="text-xs">
+                {result.language}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Content preview */}
@@ -296,13 +315,18 @@ function SearchPageInner() {
             {resultCount} result{resultCount !== 1 ? "s" : ""} in{" "}
             {response!.duration_ms}ms
           </span>
+          {response!.threshold_lowered && (
+            <span>
+              threshold lowered to {Math.round(response!.threshold_used * 100)}%
+            </span>
+          )}
         </div>
       )}
 
       {/* Results */}
       {hasResults && resultCount === 0 && (
         <p className="py-12 text-center text-sm text-muted-foreground">
-          No results found. Try a different query or lower the score threshold.
+          No strong results found. Try a more specific query.
         </p>
       )}
 

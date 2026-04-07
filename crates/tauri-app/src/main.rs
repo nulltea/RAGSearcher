@@ -27,8 +27,7 @@ fn main() {
             // Spawn a dedicated thread with its own tokio runtime for the backend.
             // This avoids conflicts with Tauri's async runtime.
             std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new()
-                    .expect("Failed to create tokio runtime");
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
 
                 rt.block_on(async {
                     tracing_subscriber::fmt::init();
@@ -50,12 +49,9 @@ fn main() {
                             .expect("Failed to initialize metadata store"),
                     );
 
-                    let extractor = Arc::new(
-                        project_rag::extraction::PatternExtractor::new(),
-                    );
-                    let algorithm_extractor = Arc::new(
-                        project_rag::extraction::AlgorithmExtractor::new(),
-                    );
+                    let extractor = Arc::new(project_rag::extraction::PatternExtractor::new());
+                    let algorithm_extractor =
+                        Arc::new(project_rag::extraction::AlgorithmExtractor::new());
 
                     let (port, _handle) = project_rag::web::start_server_background(
                         client,

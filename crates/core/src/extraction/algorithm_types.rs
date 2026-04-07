@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::{
-    CitationIssue, flexible_string_vec, opt_string_or_json, string_or_json,
-    string_or_json_default, usize_or_string,
+    CitationIssue, flexible_string_vec, opt_string_or_json, string_or_json, string_or_json_default,
+    usize_or_string,
 };
 
 // --- Pass 1: Algorithm Inventory ---

@@ -73,6 +73,7 @@ export interface SearchResult {
   file_path: string;
   content: string;
   score: number;
+  match_type?: "exact" | "keyword" | "semantic" | null;
   vector_score: number;
   keyword_score: number | null;
   combined_score: number | null;
@@ -87,6 +88,8 @@ export interface SearchResult {
 export interface SearchResponse {
   results: SearchResult[];
   duration_ms: number;
+  threshold_used: number;
+  threshold_lowered: boolean;
 }
 
 export interface SearchRequest {

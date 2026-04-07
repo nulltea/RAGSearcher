@@ -1,8 +1,6 @@
-use std::sync::Arc;
-use std::time::Instant;
-
 use axum::Json;
 use axum::extract::State;
+use std::sync::Arc;
 
 use crate::types::QueryRequest;
 use crate::vector_db::VectorDatabase;
@@ -14,8 +12,6 @@ pub async fn search(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, ApiError> {
-    let start = Instant::now();
-
     let query_req = QueryRequest {
         query: req.query,
         path: None,
@@ -33,7 +29,9 @@ pub async fn search(
 
     Ok(Json(SearchResponse {
         results: response.results,
-        duration_ms: start.elapsed().as_millis() as u64,
+        duration_ms: response.duration_ms,
+        threshold_used: response.threshold_used,
+        threshold_lowered: response.threshold_lowered,
     }))
 }
 

@@ -161,12 +161,11 @@ mod tests {
     async fn test_single_text() {
         let manager = std::sync::Arc::new(MistralRsEmbedder::new().await.unwrap());
         let m = manager.clone();
-        let embeddings = tokio::task::spawn_blocking(move || {
-            m.embed_batch(vec!["Hello world".to_string()])
-        })
-        .await
-        .unwrap()
-        .unwrap();
+        let embeddings =
+            tokio::task::spawn_blocking(move || m.embed_batch(vec!["Hello world".to_string()]))
+                .await
+                .unwrap()
+                .unwrap();
         assert_eq!(embeddings.len(), 1);
         assert_eq!(embeddings[0].len(), 768);
     }

@@ -33,10 +33,7 @@ impl PatternExtractor {
     /// `text_path` is the path to the extracted paper text file (used via `@file` reference).
     pub async fn extract_patterns(&self, text_path: &str) -> Result<ExtractionResult> {
         let total_start = Instant::now();
-        tracing::info!(
-            "Starting 3-pass extraction pipeline (text: @{})",
-            text_path,
-        );
+        tracing::info!("Starting 3-pass extraction pipeline (text: @{})", text_path,);
 
         // Pass 1: Evidence Inventory (Haiku — fast, cheap)
         tracing::info!("Pass 1/3: Extracting evidence inventory (haiku)...");

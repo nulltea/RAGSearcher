@@ -5,7 +5,10 @@ use std::sync::Mutex;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
+use tantivy::tokenizer::{Language, LowerCaser, SimpleTokenizer, Stemmer, TextAnalyzer};
 use tantivy::{Index, IndexWriter, ReloadPolicy, TantivyDocument, doc};
+
+const CONTENT_TOKENIZER: &str = "english_stem";
 
 /// BM25-based keyword search using Tantivy
 pub struct BM25Search {
@@ -28,6 +31,22 @@ pub struct BM25Result {
 }
 
 impl BM25Search {
+    fn register_tokenizers(index: &Index) {
+        let analyzer = TextAnalyzer::builder(SimpleTokenizer::default())
+            .filter(LowerCaser)
+            .filter(Stemmer::new(Language::English))
+            .build();
+        index.tokenizers().register(CONTENT_TOKENIZER, analyzer);
+    }
+
+    fn content_text_options() -> TextOptions {
+        let indexing = TextFieldIndexing::default()
+            .set_tokenizer(CONTENT_TOKENIZER)
+            .set_index_option(IndexRecordOption::WithFreqsAndPositions);
+
+        TextOptions::default().set_indexing_options(indexing)
+    }
+
     /// Create a new BM25 search index
     pub fn new<P: AsRef<Path>>(index_path: P) -> Result<Self> {
         let index_path = index_path.as_ref().to_path_buf();
@@ -35,7 +54,7 @@ impl BM25Search {
         // Create schema with ID, content, file_path, and project fields
         let mut schema_builder = Schema::builder();
         let id_field = schema_builder.add_text_field("id", STRING | STORED);
-        let content_field = schema_builder.add_text_field("content", TEXT);
+        let content_field = schema_builder.add_text_field("content", Self::content_text_options());
         let file_path_field = schema_builder.add_text_field("file_path", STRING | STORED);
         let project_field = schema_builder.add_text_field("project", STRING | STORED);
         let schema = schema_builder.build();
@@ -49,6 +68,7 @@ impl BM25Search {
             Index::create_in_dir(&index_path, schema.clone())
                 .context("Failed to create BM25 index")?
         };
+        Self::register_tokenizers(&index);
 
         Ok(Self {
             index,
@@ -386,4 +406,27 @@ where
     combined.truncate(limit);
 
     combined
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BM25Search;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_search_matches_stemmed_variants() {
+        let temp_dir = tempdir().unwrap();
+        let bm25 = BM25Search::new(temp_dir.path()).unwrap();
+        bm25.add_documents(vec![(
+            "chunk-1".to_string(),
+            "The system searches documents efficiently.".to_string(),
+            "papers/doc-1".to_string(),
+            Some("paper-1".to_string()),
+        )])
+        .unwrap();
+
+        let results = bm25.search("search", 10, Some("paper-1")).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "chunk-1");
+    }
 }

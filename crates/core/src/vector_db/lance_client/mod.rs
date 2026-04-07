@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-const BM25_INDEX_PREFIX: &str = "bm25_v2_";
+const BM25_INDEX_PREFIX: &str = "bm25_v3_";
 
 #[derive(Debug, Clone)]
 struct StoredSearchRow {
@@ -275,6 +275,7 @@ impl LanceVectorDB {
             root_path: row.root_path,
             content: row.content,
             score,
+            match_type: None,
             combined_score,
             vector_score,
             keyword_score,
@@ -336,49 +337,6 @@ impl LanceVectorDB {
         }
 
         Ok(rows)
-    }
-
-    fn normalized_query_terms(query_text: &str) -> Vec<String> {
-        query_text
-            .split(|c: char| !c.is_alphanumeric())
-            .map(str::trim)
-            .filter(|term| term.len() >= 2)
-            .map(|term| term.to_lowercase())
-            .collect()
-    }
-
-    fn keyword_match_confidence(query_text: &str, content: &str) -> Option<f32> {
-        let trimmed_query = query_text.trim();
-        if trimmed_query.len() < 2 {
-            return None;
-        }
-
-        let lowercase_content = content.to_lowercase();
-        let lowercase_query = trimmed_query.to_lowercase();
-
-        if lowercase_content.contains(&lowercase_query) {
-            return Some(0.92);
-        }
-
-        let terms = Self::normalized_query_terms(trimmed_query);
-        if !terms.is_empty() && terms.iter().all(|term| lowercase_content.contains(term)) {
-            return Some(if terms.len() == 1 { 0.85 } else { 0.78 });
-        }
-
-        None
-    }
-
-    fn display_score(
-        query_text: &str,
-        content: &str,
-        vector_score: f32,
-        keyword_score: Option<f32>,
-    ) -> f32 {
-        let keyword_confidence = keyword_score
-            .and_then(|_| Self::keyword_match_confidence(query_text, content))
-            .unwrap_or(0.0);
-
-        vector_score.max(keyword_confidence)
     }
 
     /// Get or create a BM25 index for a specific root path
@@ -716,6 +674,7 @@ impl VectorDatabase for LanceVectorDB {
         root_path: Option<String>,
         hybrid: bool,
     ) -> Result<Vec<SearchResult>> {
+        let _ = min_score;
         let table = self.get_table().await?;
         let vector_filter = Self::build_sql_filter(project.as_deref(), root_path.as_deref(), None);
 
@@ -837,19 +796,13 @@ impl VectorDatabase for LanceVectorDB {
                     .get(&chunk_id)
                     .cloned()
                     .unwrap_or((0.0, None));
-                let display_score =
-                    Self::display_score(query_text, &row.content, vector_score, keyword_score);
-                let passes_filter = display_score >= min_score;
-
-                if passes_filter {
-                    search_results.push(Self::row_to_search_result(
-                        row,
-                        display_score,
-                        Some(combined_score),
-                        vector_score,
-                        keyword_score,
-                    ));
-                }
+                search_results.push(Self::row_to_search_result(
+                    row,
+                    vector_score,
+                    Some(combined_score),
+                    vector_score,
+                    keyword_score,
+                ));
             }
 
             Ok(search_results)
@@ -887,16 +840,9 @@ impl VectorDatabase for LanceVectorDB {
                     let distance = distance_array.value(i);
                     let score = 1.0 / (1.0 + distance);
 
-                    if score >= min_score
-                        && let Some(row) = Self::row_from_batch(&batch, i)
-                    {
-                        search_results.push(Self::row_to_search_result(
-                            row,
-                            score,
-                            None,
-                            score,
-                            None,
-                        ));
+                    if let Some(row) = Self::row_from_batch(&batch, i) {
+                        search_results
+                            .push(Self::row_to_search_result(row, score, None, score, None));
                     }
                 }
             }

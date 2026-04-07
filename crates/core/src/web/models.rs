@@ -43,6 +43,8 @@ fn default_hybrid() -> bool {
 pub struct SearchResponse {
     pub results: Vec<SearchResult>,
     pub duration_ms: u64,
+    pub threshold_used: f32,
+    pub threshold_lowered: bool,
 }
 
 #[derive(Debug, Serialize)]

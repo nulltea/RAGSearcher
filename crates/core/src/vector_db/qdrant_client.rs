@@ -7,6 +7,7 @@ use qdrant_client::qdrant::{
     SearchPointsBuilder, UpsertPointsBuilder, VectorParams, VectorsConfig,
 };
 use qdrant_client::{Payload, Qdrant};
+use rust_stemmers::{Algorithm, Stemmer};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -126,9 +127,11 @@ impl QdrantVectorDB {
 
     /// Tokenize text into terms
     fn tokenize(text: &str) -> Vec<String> {
-        text.to_lowercase()
-            .split_whitespace()
-            .map(String::from)
+        let stemmer = Stemmer::create(Algorithm::English);
+        text.split(|c: char| !c.is_alphanumeric())
+            .map(str::trim)
+            .filter(|term| term.len() >= 2)
+            .map(|term| stemmer.stem(&term.to_lowercase()).to_string())
             .collect()
     }
 
@@ -327,12 +330,12 @@ impl VectorDatabase for QdrantVectorDB {
                 None => continue,
             };
 
-            let (final_score, keyword_score) = if hybrid {
+            let (combined_score, keyword_score) = if hybrid {
                 let kw_score = self.calculate_bm25_score(query_text, &content).await;
                 let combined = (vector_score * 0.7) + (kw_score * 0.3);
-                (combined, Some(kw_score))
+                (Some(combined), Some(kw_score))
             } else {
-                (vector_score, None)
+                (None, None)
             };
 
             let file_path = match payload.get("file_path").and_then(|v| v.as_str()) {
@@ -377,8 +380,9 @@ impl VectorDatabase for QdrantVectorDB {
                 file_path,
                 root_path: result_root_path,
                 content,
-                score: final_score,
-                combined_score: None,
+                score: vector_score,
+                match_type: None,
+                combined_score,
                 vector_score,
                 keyword_score,
                 start_line,
@@ -392,8 +396,15 @@ impl VectorDatabase for QdrantVectorDB {
 
         if hybrid {
             results.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
+                b.combined_score
+                    .unwrap_or(b.vector_score)
+                    .partial_cmp(&a.combined_score.unwrap_or(a.vector_score))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        } else {
+            results.sort_by(|a, b| {
+                b.vector_score
+                    .partial_cmp(&a.vector_score)
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
         }

@@ -35,6 +35,14 @@ fn default_min_score() -> f32 {
     0.7
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchMatchType {
+    Exact,
+    Keyword,
+    Semantic,
+}
+
 /// A single search result
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResult {
@@ -50,6 +58,9 @@ pub struct SearchResult {
     pub content: String,
     /// User-facing relevance score used for filtering/display (0.0 to 1.0)
     pub score: f32,
+    /// Calibrated match classification used for UI and post-processing
+    #[serde(default)]
+    pub match_type: Option<SearchMatchType>,
     /// Hybrid fusion score used for ranking/debugging
     #[serde(default)]
     pub combined_score: Option<f32>,
@@ -490,6 +501,7 @@ mod tests {
             root_path: Some("papers".to_string()),
             content: "test content".to_string(),
             score: 0.95,
+            match_type: Some(SearchMatchType::Exact),
             combined_score: Some(0.92),
             vector_score: 0.90,
             keyword_score: Some(0.85),

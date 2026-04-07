@@ -7,10 +7,7 @@ pub struct ClaudeCli {
 }
 
 /// Well-known locations for the Claude CLI binary.
-const CLAUDE_SEARCH_PATHS: &[&str] = &[
-    "/usr/local/bin/claude",
-    "/opt/homebrew/bin/claude",
-];
+const CLAUDE_SEARCH_PATHS: &[&str] = &["/usr/local/bin/claude", "/opt/homebrew/bin/claude"];
 
 impl ClaudeCli {
     pub fn new() -> Self {
@@ -53,17 +50,24 @@ impl ClaudeCli {
         }
 
         let output = std::process::Command::new("security")
-            .args(["find-generic-password", "-s", "Claude Code-credentials", "-w"])
+            .args([
+                "find-generic-password",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+            ])
             .output()
             .context("Failed to run `security` — are you on macOS?")?;
 
         if !output.status.success() {
-            bail!("No Claude credentials in keychain. Set ANTHROPIC_API_KEY or run `claude` to log in.");
+            bail!(
+                "No Claude credentials in keychain. Set ANTHROPIC_API_KEY or run `claude` to log in."
+            );
         }
 
         let json_str = String::from_utf8_lossy(&output.stdout);
-        let creds: serde_json::Value =
-            serde_json::from_str(json_str.trim()).context("Failed to parse keychain credentials")?;
+        let creds: serde_json::Value = serde_json::from_str(json_str.trim())
+            .context("Failed to parse keychain credentials")?;
 
         creds
             .pointer("/claudeAiOauth/accessToken")
@@ -73,11 +77,7 @@ impl ClaudeCli {
     }
 
     /// Call Claude Code CLI in headless mode and parse JSON response.
-    pub async fn call_claude(
-        &self,
-        prompt: &str,
-        model: &str,
-    ) -> Result<serde_json::Value> {
+    pub async fn call_claude(&self, prompt: &str, model: &str) -> Result<serde_json::Value> {
         self.call_claude_with_context(prompt, model, None).await
     }
 
@@ -294,4 +294,9 @@ pub fn strip_code_fences(s: &str) -> String {
         return without_start.trim().to_string();
     }
     trimmed.to_string()
+}
+
+#[test]
+fn test_read_oauth_token() {
+    println!("read_oauth_token(): {:?}", ClaudeCli::read_oauth_token());
 }

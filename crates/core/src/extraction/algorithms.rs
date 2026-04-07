@@ -27,10 +27,7 @@ impl AlgorithmExtractor {
 
     /// Run the 3-pass algorithm extraction pipeline.
     /// `text_path` is the path to the extracted paper text file (injected via system prompt).
-    pub async fn extract_algorithms(
-        &self,
-        text_path: &str,
-    ) -> Result<AlgorithmExtractionResult> {
+    pub async fn extract_algorithms(&self, text_path: &str) -> Result<AlgorithmExtractionResult> {
         let total_start = Instant::now();
         tracing::info!("Starting 3-pass algorithm extraction (text: {})", text_path);
 
@@ -63,8 +60,7 @@ impl AlgorithmExtractor {
         tracing::info!("Pass 2/3: Extracting algorithm definitions (sonnet)...");
         let pass2_start = Instant::now();
         let inventory_json = serde_json::to_string_pretty(&inventory)?;
-        let extraction_prompt =
-            algorithm_prompts::algorithm_extraction_prompt(&inventory_json);
+        let extraction_prompt = algorithm_prompts::algorithm_extraction_prompt(&inventory_json);
         let algorithms_raw = self
             .cli
             .call_claude_with_context(&extraction_prompt, "sonnet", Some(text_path))
